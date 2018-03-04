@@ -3,32 +3,190 @@ import RPiPWM
 from xmlrpc.server import SimpleXMLRPCServer
 import time
 import os
+import cv2
+import numpy as np
+import psutil
+import threading
 
-LEFT_CHANNEL = 14
-RGIHT_CHANNEL = 15
+import rpicam
+
+FORMAT = rpicam.FORMAT_MJPG #поток MJPG
+WIDTH, HEIGHT = 640, 480 
+RESOLUTION = (WIDTH, HEIGHT)#разрешение
+FRAMERATE = 30#частота кадров
+LEFT_CHANNEL = 14#левый борт
+RGIHT_CHANNEL = 15#правый борт
 IP = str(os.popen('hostname -I | cut -d\' \' -f1').readline().replace('\n','')) #получаем IP, удаляем \n
-PORT = 8000
+PORT = 8000#порт сервера
+RTP_IP = ''
+RTP_PORT = 5000 #порт отправки RTP видео
+
+auto = False
+
+class FrameHandler(threading.Thread):
+    
+    def __init__(self, stream):
+        super(FrameHandler, self).__init__()
+        self.daemon = True
+        self.rpiCamStream = stream
+        self._frame = None
+        self._frameCount = 0
+        self._stopped = threading.Event() #событие для остановки потока
+        self._newFrameEvent = threading.Event() #событие для контроля поступления кадров
+        
+    def run(self):
+        global auto
+        print('Frame handler started')
+        while not self._stopped.is_set():
+            while auto:
+                self.rpiCamStream.frameRequest() #отправил запрос на новый кадр
+                self._newFrameEvent.wait() #ждем появления нового кадра
+                if not (self._frame is None): #если кадр есть                   
+                    gray = cv2.cvtColor(self._frame, cv2.COLOR_BGR2GRAY)#делаем ч/б
+                    inv = False
+    
+                    ret,gray = cv2.threshold(gray,127,255,cv2.THRESH_BINARY)#переводим в ьинарное изображение
+                    frame = gray[0:int(height/3),0:width]#обрезаем для оценки инверсности
+                    intensivity = int(frame.mean())#получаем среднее значение
+                    if(intensivity<120):#условие интесивности
+                        ret,gray = cv2.threshold(gray,127,255,cv2.THRESH_BINARY_INV)#если инверсная инвертируем картинку
+                        print("Inverse")
+                        inv = True
+                    # Crop the image
+                    crop_img = gray[int(height/3):int(height/3 + (height/3)/3), 0:width] #обрезаем по вертикали
+                 
+                    # Color thresholding
+                    ret, thresh = cv2.threshold(gray, 60, 255, cv2.THRESH_BINARY_INV)#бинаризуем картинку
+                 
+                    # Find the contours of the frame
+                    cont_img, contours, hierarchy = cv2.findContours(thresh.copy(), 1, cv2.CHAIN_APPROX_NONE)#получаем список контуров
+                 
+                    # Find the biggest contour (if detected)
+                    if len(contours) > 0:#если нашли контур
+                        c = max(contours, key=cv2.contourArea)#ищем максимальный контур
+                        M = cv2.moments(c)#получаем массив с координатами
+                        if(M['m00']!=0):
+                            cx = int(M['m10']/M['m00'])#координата центра по х
+                            cy = int(M['m01']/M['m00'])#координата центра по у
+                 
+                        cv2.line(crop_img, (cx,0), (cx,height), (255,0,0), 1)#рисуем линни
+                        cv2.line(crop_img, (0,cy), (width,cy), (255,0,0), 1)
+                 
+                        cv2.drawContours(crop_img, contours, -1, (0,255,0), 1)#рисуем контур
+                        
+                        speed  = 15
+                        
+                        if cx >= 120:#если отклонение больше 120
+                            if(inv):
+                                print ("Turn Left inv")
+                                left = 0
+                                right = speed
+                            else:
+                                print ("Turn Right")
+                                left = speed
+                                right = 0
+                        if cx < 120 and cx > 50:#по аналогии
+                            print ("On Track!")
+                            left = speed
+                            right = speed
+                        if cx <= 50:#-"-
+                            if(inv):
+                                print ("Turn Right inv")
+                                left = speed
+                                right = 0
+                            else:
+                                print ("Turn Left")
+                                Cleft = 0
+                                right = speed
+                        pwm.SetChannel(LEFT_CHANNEL, left)
+                        pwm.SetChannel(RGIHT_CHANNEL, -right)
+                    else:#если не нашли контур
+                        print ("I don't see the line")
+                self._newFrameEvent.clear() #сбрасываем событие
+            
+        print('Frame handler stopped')
+
+    def stop(self): #остановка потока
+        self._stopped.set()
+        if not self._newFrameEvent.is_set(): #если кадр не обрабатывается
+            self._frame = None
+            self._newFrameEvent.set() 
+        self.join()
+
+    def setFrame(self, frame): #задание нового кадра для обработки
+        if not self._newFrameEvent.is_set(): #если обработчик готов принять новый кадр
+            self._frame = frame
+            self._newFrameEvent.set() #задали событие
+        return self._newFrameEvent.is_set()
+
+class CPU(threading.Thread):
+    def __init__:
+        print("Start measure CPU temp...")
+    def run:
+        while ext:
+            print ('CPU temp: %.2f°C. CPU use: %.2f%%' % (rpicam.getCPUtemperature(), psutil.cpu_percent()))
+            time.sleep(2)
+
+def onFrameCallback(frame): #обработчик события 'получен кадр'
+    frameHandler.setFrame(frame) #задали новый кадр
 
 def setSpeed(left,right):
     pwm.SetChannel(LEFT_CHANNEL, left)
     pwm.SetChannel(RGIHT_CHANNEL, -right)
     return 0
 
-pwm = RPiPWM.Pwm()
+def getIP(rcv):
+    global RTP_IP
+    RTP_IP = rcv #IP адрес куда отправляем видео
+    return 0
+
+def auto():
+    auto = !auto
+    return 0
+
+pwm = RPiPWM.Pwm()#создаём подключение
+
 print("Initi...")
-pwm.InitChannel(LEFT_CHANNEL, RPiPWM.PwmMode.reverseMotor)
+pwm.InitChannel(LEFT_CHANNEL, RPiPWM.PwmMode.reverseMotor)#инициализируем каналы
 pwm.InitChannel(RGIHT_CHANNEL, RPiPWM.PwmMode.reverseMotor)
 
-setSpeed(0,0)
+setSpeed(0,0)#инициализируем драйвера
 
 time.sleep(1)
 print("Succes!")
-print("Local IP is: " + IP)
 
-server = SimpleXMLRPCServer((IP, PORT))
+print("Local IP is: %s" % IP)
 
+server = SimpleXMLRPCServer((IP, PORT))#создаём сервер
 print("Listening on port %d..." % PORT)
-server.register_function(setSpeed, "setSpeed")
-server.register_function(Stop, "Stop")
 
-server.serve_forever()
+server.register_function(setSpeed, "setSpeed")#регистрируем функции
+server.register_function(auto, "auto")
+server.register_function(getIP, "getIP")
+
+#проверка наличия камеры в системе  
+assert rpicam.checkCamera(), 'Raspberry Pi camera not found'
+print('Raspberry Pi camera found')
+
+print('OpenCV version: %s' % cv2.__version__)
+while RTP_IP == '':
+    time.sleep(0.5)
+print("Sucessfully got RTP_IP")
+#создаем трансляцию с камеры (тип потока h264/mjpeg, разрешение, частота кадров, хост куда шлем, функция обрабтчик кадров)
+rpiCamStreamer = rpicam.RPiCamStreamer(FORMAT, RESOLUTION, FRAMERATE, (RTP_IP, RTP_PORT), onFrameCallback)
+rpiCamStreamer.start() #запускаем трансляцию
+
+#поток обработки кадров    
+frameHandler = FrameHandler(rpiCamStreamer)
+frameHandler.start() #запускаем обработку
+
+server.serve_forever()#запускаем шайтан-машину
+
+#останавливаем обработку кадров
+frameHandler.stop()
+
+#останов трансляции c камеры
+rpiCamStreamer.stop()    
+rpiCamStreamer.close()
+
+setSpeed(0,0)
