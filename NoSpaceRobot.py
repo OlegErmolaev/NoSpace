@@ -10,7 +10,7 @@ import threading
 
 import rpicam
 
-FORMAT = rpicam.FORMAT_MJPG #поток MJPG
+FORMAT = rpicam.FORMAT_H264 #поток H264
 WIDTH, HEIGHT = 640, 480 
 RESOLUTION = (WIDTH, HEIGHT)#разрешение
 FRAMERATE = 30#частота кадров
@@ -18,10 +18,10 @@ LEFT_CHANNEL = 14#левый борт
 RGIHT_CHANNEL = 15#правый борт
 IP = str(os.popen('hostname -I | cut -d\' \' -f1').readline().replace('\n','')) #получаем IP, удаляем \n
 PORT = 8000#порт сервера
-RTP_IP = ''
+RTP_IP = '173.1.0.100'
 RTP_PORT = 5000 #порт отправки RTP видео
 
-auto = False
+Auto = False
 
 class FrameHandler(threading.Thread):
     
@@ -35,10 +35,11 @@ class FrameHandler(threading.Thread):
         self._newFrameEvent = threading.Event() #событие для контроля поступления кадров
         
     def run(self):
-        global auto
+        global Auto
         print('Frame handler started')
         while not self._stopped.is_set():
-            while auto:
+            while Auto:
+                print (Auto)
                 self.rpiCamStream.frameRequest() #отправил запрос на новый кадр
                 self._newFrameEvent.wait() #ждем появления нового кадра
                 if not (self._frame is None): #если кадр есть                   
@@ -120,10 +121,11 @@ class FrameHandler(threading.Thread):
         return self._newFrameEvent.is_set()
 
 class CPU(threading.Thread):
-    def __init__:
+    def __init__(self):
+        threading.Thread.__init__(self)
         print("Start measure CPU temp...")
-    def run:
-        while ext:
+    def run(self):
+        while True:
             print ('CPU temp: %.2f°C. CPU use: %.2f%%' % (rpicam.getCPUtemperature(), psutil.cpu_percent()))
             time.sleep(2)
 
@@ -138,10 +140,11 @@ def setSpeed(left,right):
 def getIP(rcv):
     global RTP_IP
     RTP_IP = rcv #IP адрес куда отправляем видео
+    print("here")
     return 0
 
 def auto():
-    auto = !auto
+    Auto = not Auto
     return 0
 
 pwm = RPiPWM.Pwm()#создаём подключение
@@ -169,9 +172,10 @@ assert rpicam.checkCamera(), 'Raspberry Pi camera not found'
 print('Raspberry Pi camera found')
 
 print('OpenCV version: %s' % cv2.__version__)
-while RTP_IP == '':
+'''while RTP_IP == '':
     time.sleep(0.5)
-print("Sucessfully got RTP_IP")
+    print("wait for RTP_IP")
+print("Sucessfully got RTP_IP")'''
 #создаем трансляцию с камеры (тип потока h264/mjpeg, разрешение, частота кадров, хост куда шлем, функция обрабтчик кадров)
 rpiCamStreamer = rpicam.RPiCamStreamer(FORMAT, RESOLUTION, FRAMERATE, (RTP_IP, RTP_PORT), onFrameCallback)
 rpiCamStreamer.start() #запускаем трансляцию
@@ -180,6 +184,8 @@ rpiCamStreamer.start() #запускаем трансляцию
 frameHandler = FrameHandler(rpiCamStreamer)
 frameHandler.start() #запускаем обработку
 
+work = CPU()
+work.start()
 server.serve_forever()#запускаем шайтан-машину
 
 #останавливаем обработку кадров
