@@ -7,7 +7,7 @@ import xmlrpc.client
 import time
 import os
 
-IP = "173.1.0.65"
+IP = '173.1.0.65'
 _IP = str(os.popen('hostname -I | cut -d\' \' -f1').readline().replace('\n','')) #получаем IP, удаляем \n
 PORT = 8000
 SPEED = 100
@@ -33,14 +33,13 @@ except:
         print("Problem with joystick")
         exit(0)
 
-def auto():
+def aut():
     client.auto()
-J.connectButton('a', auto)
+J.connectButton('a', aut)
 while True:
     y = -int(J.Axis.get('hat0y'))
     x = int(J.Axis.get('hat0x'))
         
-    
     if(x != 0 and y != 0): # Если нажаты обе оси
         leftSpeed = x*y*SPEED
         rightSpeed = -x*y*SPEED
