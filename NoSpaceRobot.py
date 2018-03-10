@@ -16,16 +16,25 @@ RESOLUTION = (WIDTH, HEIGHT)#разрешение
 FRAMERATE = 30#частота кадров
 LEFT_CHANNEL = 14#левый борт
 RGIHT_CHANNEL = 15#правый борт
-IP = str(os.popen('hostname -I | cut -d\' \' -f1').readline().replace('\n','')) #получаем IP, удаляем \n
+IP = str(os.popen('hostname -I | cut -d\' \' -f1').readline().replace('\n',''))#получаем наш ip
 PORT = 8000#порт сервера
-RTP_IP = '173.1.0.100'
+RTP_IP = '173.1.0.100'#ip для трансляции пока вручную
 RTP_PORT = 5000 #порт отправки RTP видео
+BUFFER_MODE = 1#0 - off; 1 - on
+BUFFER_SIZE = 4#размер буфера
 
-Auto = False
+Auto = False#состояние автономки
 
 class FrameHandler(threading.Thread):
     
     def __init__(self, stream):
+        global BUFFER_MODE
+        self.buffer_mode = BUFFER_MODE
+        if(BUFFER_MODE):#если используем буффер
+            global BUFFER_SIZE
+            self.buffer = ()#создаём пустой буффер
+            self.buffer_size = BUFFER_SIZE#инициализируем размер
+            self.starting = True#полезная вестч
         super(FrameHandler, self).__init__()
         self.daemon = True
         self.rpiCamStream = stream
@@ -35,16 +44,20 @@ class FrameHandler(threading.Thread):
         self._newFrameEvent = threading.Event() #событие для контроля поступления кадров
         
     def run(self):
-        global Auto
+        global Auto#инициализируем глобальные перменные
+        global pwm
+        global LEFT_CHANNEL
+        global RIGHT_CHANNEL
         print('Frame handler started')
-        while not self._stopped.is_set():
-            while Auto:
-                print (Auto)
+        while not self._stopped.is_set():#пока мы живём
+            while Auto:#если врублена автономка
+                height = 480#инициализируем размер фрейма
+                width = 640
                 self.rpiCamStream.frameRequest() #отправил запрос на новый кадр
                 self._newFrameEvent.wait() #ждем появления нового кадра
                 if not (self._frame is None): #если кадр есть                   
                     gray = cv2.cvtColor(self._frame, cv2.COLOR_BGR2GRAY)#делаем ч/б
-                    inv = False
+                    inv = False#инверсность -?
     
                     ret,gray = cv2.threshold(gray,127,255,cv2.THRESH_BINARY)#переводим в ьинарное изображение
                     frame = gray[0:int(height/3),0:width]#обрезаем для оценки инверсности
@@ -75,7 +88,7 @@ class FrameHandler(threading.Thread):
                  
                         cv2.drawContours(crop_img, contours, -1, (0,255,0), 1)#рисуем контур
                         
-                        speed  = 15
+                        speed  = 100
                         
                         if cx >= 120:#если отклонение больше 120
                             if(inv):
@@ -97,14 +110,32 @@ class FrameHandler(threading.Thread):
                                 right = 0
                             else:
                                 print ("Turn Left")
-                                Cleft = 0
+                                left = 0
                                 right = speed
-                        pwm.SetChannel(LEFT_CHANNEL, left)
-                        pwm.SetChannel(RGIHT_CHANNEL, -right)
+                        if(self.buffer_mode):#использование буффера?
+                            if(self.starting):
+                                for i in self.buffer_size:
+                                    self.buffer.append([left,-right])#если первая итерация заполняем буффер одинаковыми значениями
+                                self.starting = False
+                            else:
+                                self.buffer.append([left,-right])#добавляем в буффер
+
+
+                            pwm.SetChannel(LEFT_CHANNEL, self.buffer([0][0]))#запускаем левый борт из буффера
+                            pwm.SetChannel(RGIHT_CHANNEL, self.buffer([0][1]))#запускаем правый борт из буффера
+                            self.buffer.pop(0)#выкидываем из буффера использованные скорости
+                        else:
+                            pwm.SetChannel(LEFT_CHANNEL, left)#запускаем левый борт
+                            pwm.SetChannel(LEFT_CHANNEL, -right)#запускаем правый борт
+
                     else:#если не нашли контур
                         print ("I don't see the line")
                 self._newFrameEvent.clear() #сбрасываем событие
-            
+            if(!self.starting):#сбрасываем старт и буффер для следующего сеанса
+                self.starting = True
+                self.buffer.pop(0)
+                self.buffer.pop(1)
+                self.buffer.pop(2)
         print('Frame handler stopped')
 
     def stop(self): #остановка потока
@@ -133,8 +164,8 @@ def onFrameCallback(frame): #обработчик события 'получен
     frameHandler.setFrame(frame) #задали новый кадр
 
 def setSpeed(left,right):
-    pwm.SetChannel(LEFT_CHANNEL, left)
-    pwm.SetChannel(RGIHT_CHANNEL, -right)
+    pwm.SetChannel(LEFT_CHANNEL, -left)
+    pwm.SetChannel(RGIHT_CHANNEL, right)
     return 0
 
 def getIP(rcv):
@@ -144,6 +175,7 @@ def getIP(rcv):
     return 0
 
 def auto():
+    global Auto
     Auto = not Auto
     return 0
 
