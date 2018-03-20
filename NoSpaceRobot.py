@@ -15,10 +15,10 @@ WIDTH, HEIGHT = 640, 480
 RESOLUTION = (WIDTH, HEIGHT)#разрешение
 FRAMERATE = 30#частота кадров
 LEFT_CHANNEL = 14#левый борт
-RGIHT_CHANNEL = 15#правый борт
+RIGHT_CHANNEL = 15#правый борт
 IP = str(os.popen('hostname -I | cut -d\' \' -f1').readline().replace('\n',''))#получаем наш ip
 PORT = 8000#порт сервера
-RTP_IP = '173.1.0.100'#ip для трансляции пока вручную
+RTP_IP = '192.168.42.100'#ip для трансляции пока вручную
 RTP_PORT = 5000 #порт отправки RTP видео
 BUFFER_MODE = 1#0 - off; 1 - on
 BUFFER_SIZE = 4#размер буфера
@@ -121,17 +121,17 @@ class FrameHandler(threading.Thread):
                                 self.buffer.append([left,-right])#добавляем в буффер
 
 
-                            pwm.SetChannel(LEFT_CHANNEL, self.buffer([0][0]))#запускаем левый борт из буффера
-                            pwm.SetChannel(RGIHT_CHANNEL, self.buffer([0][1]))#запускаем правый борт из буффера
+                            leftMotor.SetValue(self.buffer([0][0]))#запускаем левый борт из буффера
+                            rightMotor.SetValue(self.buffer([0][1]))#запускаем правый борт из буффера
                             self.buffer.pop(0)#выкидываем из буффера использованные скорости
                         else:
-                            pwm.SetChannel(LEFT_CHANNEL, left)#запускаем левый борт
-                            pwm.SetChannel(LEFT_CHANNEL, -right)#запускаем правый борт
+                            leftMotor.SetValue(left)#запускаем левый борт
+                            rightMotor.SetValue(-right)#запускаем правый борт
 
                     else:#если не нашли контур
                         print ("I don't see the line")
                 self._newFrameEvent.clear() #сбрасываем событие
-            if(!self.starting):#сбрасываем старт и буффер для следующего сеанса
+            if(not self.starting):#сбрасываем старт и буффер для следующего сеанса
                 self.starting = True
                 self.buffer.pop(0)
                 self.buffer.pop(1)
@@ -157,15 +157,15 @@ class CPU(threading.Thread):
         print("Start measure CPU temp...")
     def run(self):
         while True:
-            print ('CPU temp: %.2f°C. CPU use: %.2f%%' % (rpicam.getCPUtemperature(), psutil.cpu_percent()))
+            print ('CPU temp: %.2f°C. CPU use: %.2f%% Voltage: %.2f' % (rpicam.getCPUtemperature(), psutil.cpu_percent(),adc.GetVoltageFiltered()))
             time.sleep(2)
 
 def onFrameCallback(frame): #обработчик события 'получен кадр'
     frameHandler.setFrame(frame) #задали новый кадр
 
 def setSpeed(left,right):
-    pwm.SetChannel(LEFT_CHANNEL, -left)
-    pwm.SetChannel(RGIHT_CHANNEL, right)
+    leftMotor.SetValue(-left)
+    rightMotor.SetValue(right)
     return 0
 
 def getIP(rcv):
@@ -179,20 +179,21 @@ def auto():
     Auto = not Auto
     return 0
 
-pwm = RPiPWM.Pwm()#создаём подключение
 
 print("Initi...")
-pwm.InitChannel(LEFT_CHANNEL, RPiPWM.PwmMode.reverseMotor)#инициализируем каналы
-pwm.InitChannel(RGIHT_CHANNEL, RPiPWM.PwmMode.reverseMotor)
-
+leftMotor = RPiPWM.ReverseMotor(LEFT_CHANNEL)#инициализируем каналы
+rightMotor = RPiPWM.ReverseMotor(RIGHT_CHANNEL)
 setSpeed(0,0)#инициализируем драйвера
 
 time.sleep(1)
 print("Succes!")
 
+adc = RPiPWM.Battery(vRef=3.28)
+adc.start()     # запускаем измерения
+
 print("Local IP is: %s" % IP)
 
-server = SimpleXMLRPCServer((IP, PORT))#создаём сервер
+server = SimpleXMLRPCServer((IP, PORT), logRequests=False)#создаём сервер
 print("Listening on port %d..." % PORT)
 
 server.register_function(setSpeed, "setSpeed")#регистрируем функции
