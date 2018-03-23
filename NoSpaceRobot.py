@@ -15,22 +15,21 @@ import rpicam
 from queue import Queue
 
 FORMAT = rpicam.FORMAT_MJPEG #поток H264
-WIDTH, HEIGHT = 640, 480 
+WIDTH, HEIGHT = 640, 480
+
 RESOLUTION = (WIDTH, HEIGHT)#разрешение
 FRAMERATE = 30#частота кадров
 
-LEFT_CHANNEL = 14#левый борт
-RIGHT_CHANNEL = 15#правый борт
+LEFT_CHANNEL = 15#левый борт
+RIGHT_CHANNEL = 14#правый борт
 
-LEFT_CORRECTION = -10
-RIGHT_CORRECTION = 0
+LEFT_CORRECTION = 10
+RIGHT_CORRECTION = -15
 
 IP = str(os.popen('hostname -I | cut -d\' \' -f1').readline().replace('\n',''))#получаем наш ip
 PORT = 8000#порт сервера
 CONTROL_IP = "192.168.42.100"#ip для трансляции пока вручную
 RTP_PORT = 5000 #порт отправки RTP видео
-BUFFER_MODE = 0#0 - off; 1 - on
-BUFFER_SIZE = 4#размер буфера
 SENSIVITY = 85
 
 Auto = False#состояние автономки
@@ -38,14 +37,10 @@ Auto = False#состояние автономки
 class FrameHandler(threading.Thread):
     
     def __init__(self, stream):
-        global BUFFER_MODE
-        self.buffer_mode = BUFFER_MODE
-        if(BUFFER_MODE):#если используем буффер
-            global BUFFER_SIZE
-            self.buffer = Queue()#создаём пустой буффер
-            self.buffer_size = BUFFER_SIZE#инициализируем размер
-            self.starting = True#полезная вестч
         super(FrameHandler, self).__init__()
+        self.middle = 106
+        self.frameWidth = 4*int(640/6) - 2*int(640/6)
+        self.controlRate = 13
         self.daemon = True
         self.rpiCamStream = stream
         self._frame = None
@@ -53,12 +48,15 @@ class FrameHandler(threading.Thread):
         self._stopped = threading.Event() #событие для остановки потока
         self._newFrameEvent = threading.Event() #событие для контроля поступления кадров
         
+        
     def run(self):
         global Auto#инициализируем глобальные перменные
         global debugCvSender
         global SENSIVITY
         global LEFT_CORRECTION
         global RIGHT_CORRECTION
+        global setSpeed
+
         print('Frame handler started')
         while not self._stopped.is_set():#пока мы живём
             while Auto:#если врублена автономка
@@ -78,12 +76,7 @@ class FrameHandler(threading.Thread):
                         ret,binary = cv2.threshold(gray,SENSIVITY,255,cv2.THRESH_BINARY)#если инверсная инвертируем картинку
                         print("Inverse")
                         inv = True
-                    # Crop the image
-                    #crop_img = gray[int(height/3):int(height/3 + (height/3)/3), 0:width] #обрезаем по вертикали
-                 
-                    # Color thresholdin
-                    #ret, thresh = cv2.threshold(gray, 60, 255, cv2.THRESH_BINARY_INV)#бинаризуем картинку
-                 
+                        
                     # Find the contours of the frame
                     cont_img, contours, hierarchy = cv2.findContours(binary.copy(), 1, cv2.CHAIN_APPROX_NONE)#получаем список контуров
                  
@@ -101,53 +94,23 @@ class FrameHandler(threading.Thread):
                         cv2.drawContours(frame, contours, -1, (0,255,0), 1)#рисуем контур
                         debugCvSender.add(frame)
                             
-                        speed  = 40
+                        speed  = 70
                         
-                        if cx >= 121:#если отклонение больше 120
-                            print ("Turn Right")
-                            left = 80 + LEFT_CORRECTION
-                            right = 0 + RIGHT_CORRECTION
-                            leftMotor.SetValue(left)#запускаем левый борт
-                            rightMotor.SetValue(-right)#запускаем правый борт
-                        if cx < 121 and cx > 91:#по аналогии
-                            print ("On Track!")
-                            left = speed + LEFT_CORRECTION
-                            right = speed + RIGHT_CORRECTION
-                            leftMotor.SetValue(left)#запускаем левый борт
-                            rightMotor.SetValue(-right)#запускаем правый борт
-                        if cx <= 91:#-"-
-                            print ("Turn Left")
-                            left = 0 + LEFT_CORRECTION
-                            right = 80 + RIGHT_CORRECTION
-                            leftMotor.SetValue(left)#запускаем левый борт
-                            rightMotor.SetValue(-right)#запускаем правый борт
-                        print(cx)
-                        
-                        if(self.buffer_mode):#использование буффера?
-                            if(self.starting):
-                                for i in range(self.buffer_size):
-                                    self.buffer.put([left,-right])#если первая итерация заполняем буффер одинаковыми значениями
-                                self.starting = False
-                            else:
-                                self.buffer.put([left,-right])#добавляем в буффер
-
-                            speeds = self.buffer.get()
-                            print(speeds)
-                            leftMotor.SetValue(speeds[0])#запускаем левый борт из буффера
-                            rightMotor.SetValue(speeds[1])#запускаем правый борт из буффера
-                        
+                        diff = cx/(self.frameWidth/2) - 1
+                        if(cy > 60):
+                            diff *= 14
+                            
+                        leftSpeed = int(speed + diff * self.controlRate)
+                        rightSpeed = int(speed - diff * self.controlRate)
+                        setSpeed(-leftSpeed, -rightSpeed)
                         
                     else:#если не нашли контур
                         print ("I don't see the line")
+
                 self._newFrameEvent.clear() #сбрасываем событие
-            if(self.buffer_mode):
-                if(not self.starting):#сбрасываем старт и буффер для следующего сеанса
-                    self.starting = True
-                    self.buffer.task_done()
                     
         print('Frame handler stopped')
-        leftMotor.SetValue(0)#останавливаем левый борт
-        rightMotor.SetValue(0)#останавливаем правый борт
+        setSpeed(0,0)
         
     def stop(self): #остановка потока
         self._stopped.set()
@@ -162,7 +125,7 @@ class FrameHandler(threading.Thread):
             self._newFrameEvent.set() #задали событие
         return self._newFrameEvent.is_set()
 
-class CPU(threading.Thread):
+class Info(threading.Thread):
     def __init__(self):
         threading.Thread.__init__(self)
         print("Start measure CPU temp...")
@@ -183,6 +146,7 @@ class CPU(threading.Thread):
         print("Display working...")
     def run(self):
         global IP
+
         while True:
             temp = rpicam.getCPUtemperature()
             load = psutil.cpu_percent()
@@ -195,12 +159,17 @@ class CPU(threading.Thread):
             self.draw.text((self.x, self.top + 8), "Battery: "+str("%.2f" % voltage)+ " V", font=self.font, fill=255)     # высота строки - 8 пикселей
             self.draw.text((self.x, self.top + 16), "CPU temp: "+str("%.2f" % temp)+"°C", font=self.font, fill=255)
             self.draw.text((self.x, self.top + 24), "CPU load: "+str("%.2f" % load)+"%", font=self.font, fill=255)
-
+            
             self.disp.Image(self.image)   # записываем изображение в буффер
             self.disp.Display()      # выводим его на экран
 
             time.sleep(2)
-            
+    def atStart(self):
+        pass
+    
+    def lock(self):
+        pass
+    
 class cvFramesSender(threading.Thread):
     def __init__(self, client):
         threading.Thread.__init__(self)
@@ -223,15 +192,23 @@ class cvFramesSender(threading.Thread):
             res, imgJpg = cv2.imencode('.jpg', frame) #преобразовал картинку в массив
             if res:
                 self.queue.put(imgJpg)#закидываем в очередь
-            
+
+class Onliner(threading.Thread):
+    def __init__(self):
+        threading.Thread.__init__(self)
+
+    def run(self):
+        pass
+    
 def onFrameCallback(frame): #обработчик события 'получен кадр'
     frameHandler.setFrame(frame) #задали новый кадр
 
 def setSpeed(left,right):
     global LEFT_CORRECTION
     global RIGHT_CORRECTION
-    leftMotor.SetValue(-left + LEFT_CORRECTION)
-    rightMotor.SetValue(right + RIGHT_CORRECTION)
+    print("Left Speed: %s Right Speed: %s" % (left + LEFT_CORRECTION, right + RIGHT_CORRECTION))
+    leftMotor.SetValue(left + LEFT_CORRECTION)
+    rightMotor.SetValue(-right + RIGHT_CORRECTION)
     return 0
 
 def getIP(rcv):
@@ -289,7 +266,7 @@ rpiCamStreamer.start() #запускаем трансляцию
 frameHandler = FrameHandler(rpiCamStreamer)
 frameHandler.start() #запускаем обработку
 
-work = CPU()
+work = Info()
 work.start()
 server.serve_forever()#запускаем шайтан-машину
 

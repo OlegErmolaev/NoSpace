@@ -15,7 +15,7 @@ from queue import Queue
 IP = '192.168.42.220'
 _IP = str(os.popen('hostname -I | cut -d\' \' -f1').readline().replace('\n','')) #получаем IP, удаляем \n
 PORT = 8000
-SPEED = 70
+SPEED = 80
 AUTO = False
 client = xmlrpc.client.ServerProxy("http://%s:%d" % (IP, PORT))
 J = RTCjoystic.Joystick()#создаём объект класса джойстик
@@ -24,14 +24,12 @@ SENSIVITY = 85
 try:
     J.connect("/dev/input/js1")
     J.start()
-    J.info()
     print("Joystick initialized js1")
 
 except:
     try:
         J.connect("/dev/input/js0")
         J.start()
-        J.info()
 
         print("Joystick initialized js0")
     except:
@@ -58,8 +56,8 @@ class MyJoy(threading.Thread):
                         leftSpeed = y*SPEED
                         rightSpeed = y*SPEED
                     elif(y == 0): # Если поворачиваем
-                        leftSpeed = x*SPEED
-                        rightSpeed = -x*SPEED
+                        leftSpeed = -x*SPEED
+                        rightSpeed = x*SPEED
                     else: 
                         leftSpeed = 0
                         rightSpeed = 0
