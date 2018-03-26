@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+#импорт либ
 import RTCjoystic
 import receiver
 import threading
-from threading import Thread
 from xmlrpc.server import SimpleXMLRPCServer
 import xmlrpc.client
 import time
@@ -12,70 +12,119 @@ import cv2
 import numpy as np
 from queue import Queue
 
-IP = '192.168.42.220'
+#объявляем константы
+IP = '192.168.42.220'#IP робота
 _IP = str(os.popen('hostname -I | cut -d\' \' -f1').readline().replace('\n','')) #получаем IP, удаляем \n
-PORT = 8000
-SPEED = 80
-AUTO = False
-client = xmlrpc.client.ServerProxy("http://%s:%d" % (IP, PORT))
-J = RTCjoystic.Joystick()#создаём объект класса джойстик
-SENSIVITY = 85
+PORT = 8000#портсервера xmlrpc
+SPEED = 80#скорость
 
-try:
-    J.connect("/dev/input/js1")
-    J.start()
-    print("Joystick initialized js1")
-
-except:
-    try:
-        J.connect("/dev/input/js0")
-        J.start()
-
-        print("Joystick initialized js0")
-    except:
-        print("Problem with joystick")
-        exit(0)
-        
-class MyJoy(threading.Thread):
-    def __init__(self, client, joy):
+#потоковые классы
+class threadingJoy(threading.Thread):#класс джойстика
+    def __init__(self, client):
         threading.Thread.__init__(self)
-        self.client = client
-        self.J = joy
+        self.client = client#клиент
+        self.J = RTCjoystic.Joystick()#джойстик
+        self._stopping = False
+        try:
+            self.J.connect("/dev/input/js1")
+            self.J.start()
+            print("Joystick initialized js1")
+        except:
+            try:
+                self.J.connect("/dev/input/js0")
+                self.J.start()
+                print("Joystick initialized js0")
+            except:
+                print("Problem with joystick")
+                self._stopping = True
+        if not self._stopping:
+            self.J.connectButton('a', self.auto)
+
+            self.J.connectButton('x', self.decSensivity)
+            self.J.connectButton('b', self.incSensivity)
+
     def run(self):
         global SPEED
-        global AUTO
-        while True:
-            y = int(self.J.Axis.get('hat0y'))
-            x = int(self.J.Axis.get('hat0x'))
-            if(not AUTO):
+        time.sleep(0.5)
+        while not self._stopping:
+            try:
+                y = int(self.J.Axis.get('hat0y'))
+                x = int(self.J.Axis.get('hat0x'))
+                    
+                if(x != 0 and y != 0): # Если нажаты обе оси
+                    leftSpeed = x*y*SPEED
+                    rightSpeed = -x*y*SPEED
+                elif(x == 0): # Если мы не поворачиваем
+                    leftSpeed = y*SPEED
+                    rightSpeed = y*SPEED
+                elif(y == 0): # Если поворачиваем
+                    leftSpeed = -x*SPEED
+                    rightSpeed = x*SPEED
+                else: 
+                    leftSpeed = 0
+                    rightSpeed = 0
+                self.client.setSpeed(leftSpeed,rightSpeed)
+                time.sleep(0.1)
+            except:
+                pass
+
+    def auto(self):
+        try:
+            self.client.setSpeed(0, 0)
+            self.client.auto()
+        except:
+            pass
+            
+    def incSensivity(self):
+        try:
+            self.client.incSensivity()
+        except:
+            pass
+
+    def decSensivity(self):
+        try:
+            self.client.decSensivity()
+        except:
+            try:
+                self.client.decSensivity()
+            except:
                 try:
-                    if(x != 0 and y != 0): # Если нажаты обе оси
-                        leftSpeed = x*y*SPEED
-                        rightSpeed = -x*y*SPEED
-                    elif(x == 0): # Если мы не поворачиваем
-                        leftSpeed = y*SPEED
-                        rightSpeed = y*SPEED
-                    elif(y == 0): # Если поворачиваем
-                        leftSpeed = -x*SPEED
-                        rightSpeed = x*SPEED
-                    else: 
-                        leftSpeed = 0
-                        rightSpeed = 0
-                    self.client.setSpeed(leftSpeed,rightSpeed)
-                    time.sleep(0.1)
+                    self.client.decSensivity()
                 except:
                     pass
+    
+    def stop(self):
+        self._stopping = True
+       
+class Onliner(threading.Thread):
+    def __init__(self, client):
+        threading.Thread.__init__(self)
+        self.client = client
+        self._stopping = False
+        
+    def run(self):
+        time.sleep(0.05)
+        while not self._stopping:
+            try:
+                self.client.getOnline()
+                self.client.unLock()
+                time.sleep(2)
+            except:
+                pass
+
+    def stop(self):
+        self._stopping = True
 
 class cvImageShow(threading.Thread):
     def __init__(self):
         threading.Thread.__init__(self)
         self.queue = Queue()
-        self._running = False
         self._frameCount = 0 #счетчик кадров
+        self._stopping = False
         cv2.startWindowThread() #инициализация вывода cv2
         
     def run(self):
-        while True:
+        while not self._stopping:
             frame = self.queue.get()
             imgArray = np.frombuffer(frame, dtype=np.uint8) #преобразуем в массив np
             img = cv2.imdecode(imgArray, cv2.IMREAD_COLOR) #декодируем
@@ -87,76 +136,23 @@ class cvImageShow(threading.Thread):
             self._frameCount += 1
             self.queue.task_done() #сообщили очереди, что "задание выполнено"
         cv2.destroyAllWindows()
-    def add(self, frame):
+
+    def add(self):
         res = False
         if self.queue.empty():
             self.queue.put(frame)
             res = True
         return res
-    
-def aut():
-    global AUTO
-    AUTO = not AUTO
-    
-    try:
-        client.setSpeed(0, 0)
-    except:
-        try:
-            client.setSpeed(0, 0)
-        except:
-            try:
-                client.setSpeed(0, 0)
-            except:
-                pass
-    try:
-        client.auto()
-    except:
-        try:
-            client.auto()
-        except:
-            try:
-                client.auto()
-            except:
-                pass
-    
+
+    def stop(self):
+        self._stopping = True
+
 def cvShow(frame):
     if cvHandler.add(frame.data):
         pass
     return 0
-def plusVelocity():
-    global SENSIVITY
-    SENSIVITY += 1
-    print (SENSIVITY)
-    try:
-        client.change(SENSIVITY)
-    except:
-        try:
-            client.change(SENSIVITY)
-        except:
-            try:
-                client.change(SENSIVITY)
-            except:
-                pass
-def minusVelocity():
-    global SENSIVITY
-    SENSIVITY -= 1
-    print(SENSIVITY)
-    try:
-        client.change(SENSIVITY)
-    except:
-        try:
-            client.change(SENSIVITY)
-        except:
-            try:
-                client.change(SENSIVITY)
-            except:
-                pass
 
-J.connectButton('a', aut)
-
-J.connectButton('b', plusVelocity)
-J.connectButton('x', minusVelocity)
-
+client = xmlrpc.client.ServerProxy("http://%s:%d" % (IP, PORT))
 server = SimpleXMLRPCServer((_IP, PORT),logRequests = False)#создаём сервер
 print("Listening on port %d..." % PORT)
 
@@ -165,14 +161,31 @@ server.register_function(cvShow, "cvShow")#регистрируем функци
 recv = receiver.StreamReceiver(receiver.FORMAT_MJPEG, (IP, 5000))
 recv.play_pipeline()
 
-Joy = MyJoy(client, J)
+Joy = threadingJoy(client)
 Joy.start()
+
+O = Onliner(client)
+O.start()
 
 cvHandler = cvImageShow()
 cvHandler.start()
 
-server.serve_forever()#запускаем шайтан-машину
+t1 = threading.Thread(target = server.serve_forever)
+t1.start()
 
-client.setSpeed(0,0)
+_stopping = False
+
+while not _stopping:
+    try:
+        pass
+        time.sleep(0.1)
+    except KeyboardInterrupt:
+        print("Ctrl+C pressed")
+        _stopping = True
+        
+client.setSpeed(0, 0)
 recv.stop_pipeline()
 recv.null_pipeline()
+O.stop()
+Joy.stop()
+cvHandler.stop()
