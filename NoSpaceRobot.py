@@ -36,21 +36,24 @@ IP = str(os.popen('hostname -I | cut -d\' \' -f1').readline().replace('\n',''))#
 PORT = 8000#порт сервера
 CONTROL_IP = "192.168.42.100"#ip для трансляции пока вручную
 RTP_PORT = 5000 #порт отправки RTP видео
-SENSIVITY = 85
+SENSIVITY = 102
 
 CONNECTION = False
 
 Auto = False#состояние автономки
+Led = False
 
 #################################################################
 
 class FrameHandler(threading.Thread):
     
-    def __init__(self, stream):
+    def __init__(self, stream, frameSender, setSpeed):
         super(FrameHandler, self).__init__()
         self.middle = 106
-        self.frameWidth = 4*int(640/6) - 2*int(640/6)
-        self.controlRate = 13
+        self.frameWidth = 4*int(640/6)+15 - (2*int(640/6)-15)
+        self.controlRate = 15
+        self.sender = frameSender
+        self.setSpeed = setSpeed
         self.daemon = True
         self.rpiCamStream = stream
         self._frame = None
@@ -61,9 +64,7 @@ class FrameHandler(threading.Thread):
         
     def run(self):
         global Auto#инициализируем глобальные перменные
-        global debugCvSender
         global SENSIVITY
-        global setSpeed
 
         print('Frame handler started')
         while not self._stopped.is_set():#пока мы живём
@@ -73,16 +74,15 @@ class FrameHandler(threading.Thread):
                 self.rpiCamStream.frameRequest() #отправил запрос на новый кадр
                 self._newFrameEvent.wait() #ждем появления нового кадра
                 if not (self._frame is None): #если кадр есть
-                    frame = self._frame[4*int(height/5):height, 2*int(width/6):4*int(width/6)]#обрезаем для оценки инверсности
+                    frame = self._frame[4*int(height/5):height, 2*int(width/6)-15:4*int(width/6)+15]#обрезаем для оценки инверсности
                     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)#делаем ч/б
 
-                    ret, binary = cv2.threshold(gray,SENSIVITY,255,cv2.THRESH_BINARY_INV)#переводим в ьинарное изображение
-
                     intensivity = int(gray.mean())#получаем среднее значение
-                    if(intensivity<120):#условие интесивности
+                    if(intensivity<135):#условие интесивности
                         ret,binary = cv2.threshold(gray,SENSIVITY,255,cv2.THRESH_BINARY)#если инверсная инвертируем картинку
                         print("Inverse")
-                        
+                    else:
+                        ret, binary = cv2.threshold(gray,SENSIVITY,255,cv2.THRESH_BINARY_INV)#переводим в ьинарное изображение
                     # Find the contours of the frame
                     cont_img, contours, hierarchy = cv2.findContours(binary.copy(), 1, cv2.CHAIN_APPROX_NONE)#получаем список контуров
                  
@@ -97,22 +97,22 @@ class FrameHandler(threading.Thread):
                         cv2.line(frame, (0,cy), (width,cy), (255,0,0), 1)
                  
                         cv2.drawContours(frame, contours, -1, (0,255,0), 1)#рисуем контур
-                        debugCvSender.add(frame)
+                        self.sender.addFrame(frame)
                             
-                        speed  = 65
+                        speed  = 55
                         
                         diff = cx/(self.frameWidth/2) - 1
-                        if(cy > 60):
-                            diff *= 14
+                        if(cy > 80):
+                            diff *= 25
                             
                         leftSpeed = int(speed + diff * self.controlRate)
                         rightSpeed = int(speed - diff * self.controlRate)
-                        setSpeed(-leftSpeed, -rightSpeed, True)
+                        print('Left: %s Right: %s' % (leftSpeed, rightSpeed))
+                        self.setSpeed(-leftSpeed, -rightSpeed, True)
                         
                     else:#если не нашли контур
                         print ("I don't see the line")
-                        serSpeed(0,0,True)
-                        time.sleep(0.2)
+                        self.setSpeed(0,0)
 
                 self._newFrameEvent.clear() #сбрасываем событие
                     
@@ -136,20 +136,20 @@ class FrameHandler(threading.Thread):
 
 class onWorking(threading.Thread):
     def __init__(self):
-        threading.Thread.__init__(self, display)
+        threading.Thread.__init__(self)
         print("Start measure CPU temp...")
         # создаем объект для работы с дисплеем (еще возможные варианты - 128_32 и 96_16 - размеры дисплеев в пикселях)
 
-        self.disp = display
+        #self.disp = display
         
-        self.width = self.disp.width  # получаем высоту и ширину дисплея
-        self.height = self.disp.height
+        #self.width = self.disp.width  # получаем высоту и ширину дисплея
+        #self.height = self.disp.height
         
-        self.image = Image.new('1', (self.width, self.height))     # создаем изображение из библиотеки PIL для вывода на экран
-        self.draw = ImageDraw.Draw(self.image)    # создаем объект, которым будем рисовать
-        self.top = -2    # сдвигаем текст вверх на 2 пикселя
-        self.x = 0   # сдвигаем весь текст к левому краю
-        self.font = ImageFont.load_default()     # загружаем стандартный шрифт
+        #self.image = Image.new('1', (self.width, self.height))     # создаем изображение из библиотеки PIL для вывода на экран
+        #self.draw = ImageDraw.Draw(self.image)    # создаем объект, которым будем рисовать
+        #self.top = -2    # сдвигаем текст вверх на 2 пикселя
+        #self.x = 0   # сдвигаем весь текст к левому краю
+        #self.font = ImageFont.load_default()     # загружаем стандартный шрифт
 
         self._stopping = False
         self.waitTime = 0
@@ -188,26 +188,26 @@ class onWorking(threading.Thread):
                         
                     print ('CPU temp: %s CPU use: %s Voltage: %s' % (tempS, loadS, voltageS))
                         
-                    self.draw.rectangle((0, 0, self.width, self.height), outline=0, fill=0)  # прямоугольник, залитый черным - очищаем дисплей
-                    self.draw.text((self.x, self.top), "Ip: "+str(IP), font=self.font, fill=255)        # формируем текст
-                    self.draw.text((self.x, self.top + 8), "Battery: "+str("%.2f" % voltage)+ " V", font=self.font, fill=255)     # высота строки - 8 пикселей
-                    self.draw.text((self.x, self.top + 16), "CPU temp: "+str("%.2f" % temp) + "°C", font=self.font, fill=255)
-                    self.draw.text((self.x, self.top + 24), "CPU load: "+str("%.2f" % load)+"%", font=self.font, fill=255)
+                    #self.draw.rectangle((0, 0, self.width, self.height), outline=0, fill=0)  # прямоугольник, залитый черным - очищаем дисплей
+                    #self.draw.text((self.x, self.top), "Ip: "+str(IP), font=self.font, fill=255)        # формируем текст
+                    #self.draw.text((self.x, self.top + 8), "Battery: "+str("%.2f" % voltage)+ " V", font=self.font, fill=255)     # высота строки - 8 пикселей
+                    #self.draw.text((self.x, self.top + 16), "CPU temp: "+str("%.2f" % temp) + "°C", font=self.font, fill=255)
+                    #self.draw.text((self.x, self.top + 24), "CPU load: "+str("%.2f" % load)+"%", font=self.font, fill=255)
                     
-                    self.disp.Image(self.image)   # записываем изображение в буффер
-                    self.disp.Display()      # выводим его на экран
+                    #self.disp.Image(self.image)   # записываем изображение в буффер
+                    #self.disp.Display()      # выводим его на экран
 
                     time.sleep(2)
             else:
                 while not CONNECTION:
                     voltage = adc.GetVoltageFiltered()                    
-                    self.draw.rectangle((0, 0, self.width, self.height), outline=0, fill=0)  # прямоугольник, залитый черным - очищаем дисплей
-                    self.draw.text((self.x, self.top), "Ip: "+str(IP), font=self.font, fill=255)        # формируем текст
-                    self.draw.text((self.x, self.top + 8), "Battery: "+str("%.2f" % voltage)+ " V", font=self.font, fill=255)     # высота строки - 8 пикселей
-                    self.draw.text((self.x, self.top + 16), "Waiting pc..."+str(300 - waitTime), font=self.font, fill=255)
+                    #self.draw.rectangle((0, 0, self.width, self.height), outline=0, fill=0)  # прямоугольник, залитый черным - очищаем дисплей
+                    #self.draw.text((self.x, self.top), "Ip: "+str(IP), font=self.font, fill=255)        # формируем текст
+                    #self.draw.text((self.x, self.top + 8), "Battery: "+str("%.2f" % voltage)+ " V", font=self.font, fill=255)     # высота строки - 8 пикселей
+                    #self.draw.text((self.x, self.top + 16), "Waiting pc..."+str(300 - waitTime), font=self.font, fill=255)
 
-                    self.disp.Image(self.image)   # записываем изображение в буффер
-                    self.disp.Display()      # выводим его на экран
+                    #self.disp.Image(self.image)   # записываем изображение в буффер
+                    #self.disp.Display()      # выводим его на экран
 
                     time.sleep(1)    
 
@@ -234,7 +234,7 @@ class cvFramesSender(threading.Thread):
                 print('Fault code:', err.faultCode)
                 print('Message   :', err.faultString)
                 
-    def add(self, frame):
+    def addFrame(self, frame):
         if self.queue.empty():#если в очереди пусто
             res, imgJpg = cv2.imencode('.jpg', frame) #преобразовал картинку в массив
             if res:
@@ -291,6 +291,12 @@ def unLock():
     CONNECTION = True
     return 0
 
+def chLed():
+    global Led
+    Led = not Led
+    led.SetValue(Led)
+    return 0
+
 def auto():
     global Auto
     Auto = not Auto
@@ -299,11 +305,13 @@ def auto():
 def incSensivity():
     global SENSIVITY
     SENSIVITY += 1
+    print(SENSIVITY)
     return SENSIVITY
 
 def decSensivity():
     global SENSIVITY
     SENSIVITY -= 1
+    print(SENSIVITY)
     return SENSIVITY
 
 colorama.init()
@@ -311,6 +319,8 @@ colorama.init()
 print("Initi..." + DEFAULT)
 leftMotor = RPiPWM.ReverseMotor(LEFT_CHANNEL)#инициализируем каналы
 rightMotor = RPiPWM.ReverseMotor(RIGHT_CHANNEL)
+led = RPiPWM.Switch(0)
+led.SetValue(False)
 setSpeed(0,0)#инициализируем драйвера
 
 time.sleep(1)
@@ -320,11 +330,11 @@ adc = RPiPWM.Battery(vRef=3.28)
 adc.start()     # запускаем измерения
 print("Adc started")
 
-disp = RPiPWM.SSD1306_128_32()
-disp.Begin()    # запускаем дисплей
-disp.Clear()    # очищаем буффер изображения
-disp.Display()  # выводим пустую картинку на дисплей
-print("Display working...")
+#disp = RPiPWM.SSD1306_128_32()
+#disp.Begin()    # запускаем дисплей
+#disp.Clear()    # очищаем буффер изображения
+#disp.Display()  # выводим пустую картинку на дисплей
+#print("Display working...")
 
 print("Local IP is: %s" % IP)
 
@@ -339,6 +349,7 @@ server.register_function(auto, "auto")
 server.register_function(incSensivity, "incSensivity")
 server.register_function(decSensivity, "decSensivity")
 server.register_function(unLock, "unLock")
+server.register_function(chLed, "chLed")
 server.register_function(O.getOnlineFlag, "getOnline")
 
 t1 = threading.Thread(target = server.serve_forever)
@@ -346,12 +357,13 @@ t1.start()
 
 waitTime = 0
 
-work = onWorking(disp)
+work = onWorking()
 work.start()
 
 while not CONNECTION:
     if waitTime < 300:
         waitTime += 1
+        print(waitTime)
         time.sleep(1)
     else:
         print("Goodbye")
@@ -373,7 +385,7 @@ rpiCamStreamer = rpicam.RPiCamStreamer(FORMAT, RESOLUTION, FRAMERATE, (CONTROL_I
 rpiCamStreamer.start() #запускаем трансляцию
 
 #поток обработки кадров    
-frameHandler = FrameHandler(rpiCamStreamer)
+frameHandler = FrameHandler(rpiCamStreamer, debugCvSender, setSpeed)
 frameHandler.start() #запускаем обработку
     
 

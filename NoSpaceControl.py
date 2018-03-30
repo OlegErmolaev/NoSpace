@@ -39,7 +39,7 @@ class threadingJoy(threading.Thread):#класс джойстика
                 self._stopping = True
         if not self._stopping:
             self.J.connectButton('a', self.auto)
-
+            self.J.connectButton('y', self.chLed)
             self.J.connectButton('x', self.decSensivity)
             self.J.connectButton('b', self.incSensivity)
 
@@ -85,13 +85,13 @@ class threadingJoy(threading.Thread):#класс джойстика
         try:
             self.client.decSensivity()
         except:
-            try:
-                self.client.decSensivity()
-            except:
-                try:
-                    self.client.decSensivity()
-                except:
-                    pass
+            pass
+
+    def chLed(self):
+        try:
+            self.client.chLed()
+        except:
+            pass
     
     def stop(self):
         self._stopping = True
@@ -137,7 +137,7 @@ class cvImageShow(threading.Thread):
             self.queue.task_done() #сообщили очереди, что "задание выполнено"
         cv2.destroyAllWindows()
 
-    def add(self):
+    def add(self, frame):
         res = False
         if self.queue.empty():
             self.queue.put(frame)
