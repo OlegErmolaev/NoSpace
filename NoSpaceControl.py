@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 #импорт либ
-import RTCjoystic
+import RTCJoystick
 import receiver
 import threading
 from xmlrpc.server import SimpleXMLRPCServer
@@ -17,13 +17,23 @@ IP = '192.168.42.220'#IP робота
 _IP = str(os.popen('hostname -I | cut -d\' \' -f1').readline().replace('\n','')) #получаем IP, удаляем \n
 PORT = 8000#портсервера xmlrpc
 SPEED = 80#скорость
+STEP_DEGREE = 5
 
 #потоковые классы
 class threadingJoy(threading.Thread):#класс джойстика
     def __init__(self, client):
         threading.Thread.__init__(self)
         self.client = client#клиент
-        self.J = RTCjoystic.Joystick()#джойстик
+        self.J = RTCJoystick.Joystick()#джойстик
+        
+        self.camPos = 90
+        
+        self.RotateArm = 65
+        self.Arm1 = 135
+        self.Arm2 = 135
+        self.RotateGripper = 90
+        self.Gripper = 180
+        
         self._stopping = False
         try:
             self.J.connect("/dev/input/js1")
@@ -42,14 +52,110 @@ class threadingJoy(threading.Thread):#класс джойстика
             self.J.connectButton('y', self.chLed)
             self.J.connectButton('x', self.decSensivity)
             self.J.connectButton('b', self.incSensivity)
+            self.J.connectButton('select', self.camDown)
+            self.J.connectButton('start', self.camUp)
+            self.J.connectButton('mode', self.armDefault)
+            self.J.connectButton('tr', self.camDefault)
+
 
     def run(self):
         global SPEED
+        global STEP_DEGREE
         time.sleep(0.5)
         while not self._stopping:
             try:
                 y = int(self.J.Axis.get('hat0y'))
                 x = int(self.J.Axis.get('hat0x'))
+
+                rotateArm = int(self.J.Axis.get('x')*-100)
+                Arm1 = int(self.J.Axis.get('y')*100)
+                Arm2 = int(self.J.Axis.get('ry')*100)
+                RotateGripper = int(self.J.Axis.get('rx')*100)
+                openGrip = int(self.J.Axis.get('z')*100)
+                closeGrip = int(self.J.Axis.get('rz')*100)
+                    
+                if (rotateArm > 15 and rotateArm < 40):
+                    self.RotateArm += STEP_DEGREE*0.25
+                elif(rotateArm >=40 and rotateArm < 80):
+                    self.RotateArm += STEP_DEGREE*0.5
+                elif(rotateArm >= 70):
+                    self.RotateArm += STEP_DEGREE
+                elif (rotateArm < -15 and rotateArm > -40):
+                    self.RotateArm -= STEP_DEGREE*0.25
+                elif(rotateArm <= -40 and rotateArm > -80):
+                    self.RotateArm -= STEP_DEGREE*0.5
+                elif(rotateArm <= -80):
+                    self.RotateArm -= STEP_DEGREE
+                if(self.RotateArm > 120):
+                    self.RotateArm = 120
+                elif(self.RotateArm < 0):
+                    self.RotateArm = 0
+
+                if (Arm1 > 15 and Arm1 < 40):
+                    self.Arm1 += STEP_DEGREE*0.25
+                elif(Arm1 >=40 and Arm1 < 80):
+                    self.Arm1 += STEP_DEGREE*0.5
+                elif(Arm1 >= 70):
+                    self.Arm1 += STEP_DEGREE
+                elif (Arm1 < -15 and Arm1 > -40):
+                    self.Arm1 -= STEP_DEGREE*0.25
+                elif(Arm1 <= -40 and Arm1 > -80):
+                    self.Arm1 -= STEP_DEGREE*0.5
+                elif(Arm1 <= -80):
+                    self.Arm1 -= STEP_DEGREE
+                if(self.Arm1 > 270):
+                    self.Arm1 = 270
+                elif(self.Arm1 < 0):
+                    self.Arm1 = 0
+
+                if (Arm2 > 15 and Arm2 < 40):
+                    self.Arm2 += STEP_DEGREE*0.25
+                elif(Arm2 >=40 and Arm2 < 80):
+                    self.Arm2 += STEP_DEGREE*0.5
+                elif(Arm2 >= 70):
+                    self.Arm2 += STEP_DEGREE
+                elif (Arm2 < -15 and Arm2 > -40):
+                    self.Arm2 -= STEP_DEGREE*0.25
+                elif(Arm2 <= -40 and Arm2 > -80):
+                    self.Arm2 -= STEP_DEGREE*0.5
+                elif(Arm2 <= -80):
+                    self.Arm2 -= STEP_DEGREE
+                if(self.Arm2 > 270):
+                    self.Arm2 = 270
+                elif(self.Arm2 < 0):
+                    self.Arm2 = 0
+
+                if (RotateGripper > 15 and RotateGripper < 40):
+                    self.RotateGripper += STEP_DEGREE*0.25
+                elif(RotateGripper >=40 and RotateGripper < 80):
+                    self.RotateGripper += STEP_DEGREE*0.5
+                elif(RotateGripper >= 70):
+                    self.RotateGripper += STEP_DEGREE
+                elif (RotateGripper < -15 and RotateGripper > -40):
+                    self.RotateGripper -= STEP_DEGREE*0.25
+                elif(RotateGripper <= -40 and RotateGripper > -80):
+                    self.RotateGripper -= STEP_DEGREE*0.5
+                elif(RotateGripper <= -80):
+                    self.RotateGripper -= STEP_DEGREE
+                if(self.RotateGripper > 180):
+                    self.RotateGripper = 180
+                elif(self.RotateGripper < 0):
+                    self.RotateGripper = 0
+                    
+
+                if(openGrip > -50 and openGrip < 0):
+                    self.Gripper -= STEP_DEGREE*0.25
+                elif(openGrip >= 0 and openGrip < 30):
+                    self.Gripper -= STEP_DEGREE*0.5
+                elif(openGrip >= 30):
+                    self.Gripper -= STEP_DEGREE
+
+                if(closeGrip > -50 and closeGrip < 0):
+                    self.Gripper += STEP_DEGREE*0.25
+                elif(closeGrip >= 0 and closeGrip < 30):
+                    self.Gripper += STEP_DEGREE*0.5
+                elif(closeGrip >= 30):
+                    self.Gripper += STEP_DEGREE
                     
                 if(x != 0 and y != 0): # Если нажаты обе оси
                     leftSpeed = x*y*SPEED
@@ -63,8 +169,35 @@ class threadingJoy(threading.Thread):#класс джойстика
                 else: 
                     leftSpeed = 0
                     rightSpeed = 0
-                self.client.setSpeed(leftSpeed,rightSpeed)
+
+                try:    
+                    self.client.setSpeed(leftSpeed,rightSpeed)
+                    self.client.rotateArmSet(int(self.RotateArm - 0.5))
+                    self.client.Arm1Set(int(self.Arm1 - 0.5))
+                    self.client.Arm2Set(int(self.Arm2 - 0.5))
+                    self.client.rotateGripperSet(int(self.RotateGripper - 0.5))
+                    self.client.gripperSet(int(self.Gripper - 0.5))
+                    
+                except:
+                    try:
+                        self.client.setSpeed(leftSpeed,rightSpeed)
+                        self.client.rotateArmSet(int(self.RotateArm - 0.5))
+                        self.client.Arm1Set(int(self.Arm1 - 0.5))
+                        self.client.Arm2Set(int(self.Arm2 - 0.5))
+                        self.client.rotateGripperSet(int(self.RotateGripper - 0.5))
+                        self.client.gripperSet(int(self.Gripper - 0.5))                        
+                    except:
+                        try:
+                            self.client.setSpeed(leftSpeed,rightSpeed)
+                            self.client.rotateArmSet(int(self.RotateArm - 0.5))
+                            self.client.Arm1Set(int(self.Arm1 - 0.5))
+                            self.client.Arm2Set(int(self.Arm2 - 0.5))
+                            self.client.rotateGripperSet(int(self.RotateGripper - 0.5))
+                            self.client.gripperSet(int(self.Gripper - 0.5))                
+                        except:
+                            pass
                 time.sleep(0.1)
+        
             except:
                 pass
 
@@ -92,7 +225,39 @@ class threadingJoy(threading.Thread):#класс джойстика
             self.client.chLed()
         except:
             pass
-    
+
+    def camUp(self):
+        self.camPos += 1
+        try:
+            self.client.cameraSet(self.camPos)
+        except:
+            pass
+
+    def camDown(self):
+        self.camPos -= 1
+        try:
+            self.client.cameraSet(self.camPos)
+        except:
+            pass
+
+    def camDefault(self):
+        try:
+            self.client.defaultCamPos()
+            self.camPos = 90
+        except:
+            pass
+
+    def armDefault(self):
+        try:
+            self.client.defaultArmPos()
+            self.RotateArm = 65
+            self.Arm1 = 135
+            self.Arm2 = 135
+            self.RotateGripper = 90
+            self.Gripper = 180
+        except:
+            pass
+        
     def stop(self):
         self._stopping = True
        

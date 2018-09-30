@@ -38,13 +38,16 @@ CONTROL_IP = "192.168.42.100"#ip для трансляции пока вручн
 RTP_PORT = 5000 #порт отправки RTP видео
 SENSIVITY = 102
 
+CAMERA_DEFAULT_POS = 90
+CAMERA_AUTO_POS = 120
+
 CONNECTION = False
 
 Auto = False#состояние автономки
 Led = False
 
 #################################################################
-
+'''
 class FrameHandler(threading.Thread):
     
     def __init__(self, stream, frameSender, setSpeed):
@@ -54,13 +57,13 @@ class FrameHandler(threading.Thread):
         self.controlRate = 15
         self.sender = frameSender
         self.setSpeed = setSpeed
+        self.camera = cam
         self.daemon = True
         self.rpiCamStream = stream
         self._frame = None
         self._frameCount = 0
         self._stopped = threading.Event() #событие для остановки потока
         self._newFrameEvent = threading.Event() #событие для контроля поступления кадров
-        
         
     def run(self):
         global Auto#инициализируем глобальные перменные
@@ -69,6 +72,7 @@ class FrameHandler(threading.Thread):
         print('Frame handler started')
         while not self._stopped.is_set():#пока мы живём
             while Auto:#если врублена автономка
+                
                 height = 480#инициализируем размер фрейма
                 width = 640
                 self.rpiCamStream.frameRequest() #отправил запрос на новый кадр
@@ -131,7 +135,7 @@ class FrameHandler(threading.Thread):
             self._frame = frame
             self._newFrameEvent.set() #задали событие
         return self._newFrameEvent.is_set()
-
+'''
 #################################################################
 
 class onWorking(threading.Thread):
@@ -140,16 +144,18 @@ class onWorking(threading.Thread):
         print("Start measure CPU temp...")
         # создаем объект для работы с дисплеем (еще возможные варианты - 128_32 и 96_16 - размеры дисплеев в пикселях)
 
-        #self.disp = display
+        '''
+        self.disp = display
         
-        #self.width = self.disp.width  # получаем высоту и ширину дисплея
-        #self.height = self.disp.height
+        self.width = self.disp.width  # получаем высоту и ширину дисплея
+        self.height = self.disp.height
         
-        #self.image = Image.new('1', (self.width, self.height))     # создаем изображение из библиотеки PIL для вывода на экран
-        #self.draw = ImageDraw.Draw(self.image)    # создаем объект, которым будем рисовать
-        #self.top = -2    # сдвигаем текст вверх на 2 пикселя
-        #self.x = 0   # сдвигаем весь текст к левому краю
-        #self.font = ImageFont.load_default()     # загружаем стандартный шрифт
+        self.image = Image.new('1', (self.width, self.height))     # создаем изображение из библиотеки PIL для вывода на экран
+        self.draw = ImageDraw.Draw(self.image)    # создаем объект, которым будем рисовать
+        self.top = -2    # сдвигаем текст вверх на 2 пикселя
+        self.x = 0   # сдвигаем весь текст к левому краю
+        self.font = ImageFont.load_default()     # загружаем стандартный шрифт
+        '''
 
         self._stopping = False
         self.waitTime = 0
@@ -187,27 +193,31 @@ class onWorking(threading.Thread):
                         loadS = GREEN + str("%.2f" % load) + "%"+DEFAULT
                         
                     print ('CPU temp: %s CPU use: %s Voltage: %s' % (tempS, loadS, voltageS))
-                        
-                    #self.draw.rectangle((0, 0, self.width, self.height), outline=0, fill=0)  # прямоугольник, залитый черным - очищаем дисплей
-                    #self.draw.text((self.x, self.top), "Ip: "+str(IP), font=self.font, fill=255)        # формируем текст
-                    #self.draw.text((self.x, self.top + 8), "Battery: "+str("%.2f" % voltage)+ " V", font=self.font, fill=255)     # высота строки - 8 пикселей
-                    #self.draw.text((self.x, self.top + 16), "CPU temp: "+str("%.2f" % temp) + "°C", font=self.font, fill=255)
-                    #self.draw.text((self.x, self.top + 24), "CPU load: "+str("%.2f" % load)+"%", font=self.font, fill=255)
+
+                    '''
+                    self.draw.rectangle((0, 0, self.width, self.height), outline=0, fill=0)  # прямоугольник, залитый черным - очищаем дисплей
+                    self.draw.text((self.x, self.top), "Ip: "+str(IP), font=self.font, fill=255)        # формируем текст
+                    self.draw.text((self.x, self.top + 8), "Battery: "+str("%.2f" % voltage)+ " V", font=self.font, fill=255)     # высота строки - 8 пикселей
+                    self.draw.text((self.x, self.top + 16), "CPU temp: "+str("%.2f" % temp) + "°C", font=self.font, fill=255)
+                    self.draw.text((self.x, self.top + 24), "CPU load: "+str("%.2f" % load)+"%", font=self.font, fill=255)
                     
-                    #self.disp.Image(self.image)   # записываем изображение в буффер
-                    #self.disp.Display()      # выводим его на экран
+                    self.disp.Image(self.image)   # записываем изображение в буффер
+                    self.disp.Display()      # выводим его на экран
+                    '''
 
                     time.sleep(2)
             else:
                 while not CONNECTION:
-                    voltage = adc.GetVoltageFiltered()                    
-                    #self.draw.rectangle((0, 0, self.width, self.height), outline=0, fill=0)  # прямоугольник, залитый черным - очищаем дисплей
-                    #self.draw.text((self.x, self.top), "Ip: "+str(IP), font=self.font, fill=255)        # формируем текст
-                    #self.draw.text((self.x, self.top + 8), "Battery: "+str("%.2f" % voltage)+ " V", font=self.font, fill=255)     # высота строки - 8 пикселей
-                    #self.draw.text((self.x, self.top + 16), "Waiting pc..."+str(300 - waitTime), font=self.font, fill=255)
+                    voltage = adc.GetVoltageFiltered()
+                    '''
+                    self.draw.rectangle((0, 0, self.width, self.height), outline=0, fill=0)  # прямоугольник, залитый черным - очищаем дисплей
+                    self.draw.text((self.x, self.top), "Ip: "+str(IP), font=self.font, fill=255)        # формируем текст
+                    self.draw.text((self.x, self.top + 8), "Battery: "+str("%.2f" % voltage)+ " V", font=self.font, fill=255)     # высота строки - 8 пикселей
+                    self.draw.text((self.x, self.top + 16), "Waiting pc..."+str(300 - waitTime), font=self.font, fill=255)
 
-                    #self.disp.Image(self.image)   # записываем изображение в буффер
-                    #self.disp.Display()      # выводим его на экран
+                    self.disp.Image(self.image)   # записываем изображение в буффер
+                    self.disp.Display()      # выводим его на экран
+                    '''
 
                     time.sleep(1)    
 
@@ -215,7 +225,7 @@ class onWorking(threading.Thread):
         self._stopping = True
         
 #################################################################
-        
+'''        
 class cvFramesSender(threading.Thread):
     def __init__(self, client):
         threading.Thread.__init__(self)
@@ -242,7 +252,7 @@ class cvFramesSender(threading.Thread):
 
     def stop(self):
         self._stopping = True
-
+'''
 #################################################################
 
 class Onliner(threading.Thread):
@@ -300,6 +310,10 @@ def chLed():
 def auto():
     global Auto
     Auto = not Auto
+    if(Auto):
+        camera.SetValue(CAMERA_AUTO_POS)
+    else:
+        camera.SetValue(CAMERA_DEFAULT_POS)        
     return 0
 
 def incSensivity():
@@ -314,12 +328,55 @@ def decSensivity():
     print(SENSIVITY)
     return SENSIVITY
 
+def defaultArmPos():
+    rotateArm.SetValue(65)
+    Arm1.SetValue(135)
+    Arm2.SetValue(135)
+    rotateGripper.SetValue(90)
+    gripper.SetValue(180)
+    return 0
+
+def defaultCamPos():
+    camera.SetValue(CAMERA_DEFAULT_POS)
+    return 0
+
+def rotateArmSet(value):
+    rotateArm.SetValue(value)
+    return 0
+
+def Arm1Set(value):
+    Arm1.SetValue(value)
+    return 0
+
+def Arm2Set(value):
+    Arm2.SetValue(value)
+    return 0
+
+def rotateGripperSet(value):
+    rotateGripper.SetValue(value)
+    return 0
+
+def gripperSet(value):
+    gripper.SetValue(value)
+    return 0
+
+def cameraSet(value):
+    camera.SetValue(value)
+    return 0
+
 colorama.init()
 
 print("Initi..." + DEFAULT)
 leftMotor = RPiPWM.ReverseMotor(LEFT_CHANNEL)#инициализируем каналы
 rightMotor = RPiPWM.ReverseMotor(RIGHT_CHANNEL)
-led = RPiPWM.Switch(0)
+led = RPiPWM.Switch(4)
+rotateArm = RPiPWM.Servo120(7, extended = True)
+Arm1 = RPiPWM.Servo270(8, extended = True)
+Arm2 = RPiPWM.Servo270(0, extended = True)
+rotateGripper = RPiPWM.Servo180(9, extended = True)
+gripper = RPiPWM.Servo180(1, extended = True)
+camera = RPiPWM.Servo180(10, extended = True)
+
 led.SetValue(False)
 setSpeed(0,0)#инициализируем драйвера
 
@@ -330,18 +387,20 @@ adc = RPiPWM.Battery(vRef=3.28)
 adc.start()     # запускаем измерения
 print("Adc started")
 
-#disp = RPiPWM.SSD1306_128_32()
-#disp.Begin()    # запускаем дисплей
-#disp.Clear()    # очищаем буффер изображения
-#disp.Display()  # выводим пустую картинку на дисплей
-#print("Display working...")
+'''
+disp = RPiPWM.SSD1306_128_32()
+disp.Begin()    # запускаем дисплей
+disp.Clear()    # очищаем буффер изображения
+disp.Display()  # выводим пустую картинку на дисплей
+print("Display working...")
+'''
 
 print("Local IP is: %s" % IP)
 
 O = Onliner()
 O.start()
 
-server = SimpleXMLRPCServer((IP, PORT), logRequests=False)#создаём сервер
+server = SimpleXMLRPCServer((IP, PORT), logRequests=True)#создаём сервер
 print("Listening on port %d..." % PORT)
 
 server.register_function(setSpeed, "setSpeed")#регистрируем функции
@@ -350,6 +409,14 @@ server.register_function(incSensivity, "incSensivity")
 server.register_function(decSensivity, "decSensivity")
 server.register_function(unLock, "unLock")
 server.register_function(chLed, "chLed")
+server.register_function(defaultArmPos, "defaultArmPos")
+server.register_function(defaultCamPos, "defaultCamPos")
+server.register_function(rotateArmSet, "rotateArmSet")
+server.register_function(Arm1Set, "Arm1Set")
+server.register_function(Arm2Set, "Arm2Set")
+server.register_function(rotateGripperSet, "rotateGripperSet")
+server.register_function(gripperSet, "gripperSet")
+server.register_function(cameraSet, "cameraSet")
 server.register_function(O.getOnlineFlag, "getOnline")
 
 t1 = threading.Thread(target = server.serve_forever)
@@ -372,21 +439,21 @@ while not CONNECTION:
 client = xmlrpc.client.ServerProxy("http://%s:%d" % (CONTROL_IP, PORT))
 
 #проверка наличия камеры в системе  
-assert rpicam.checkCamera(), 'Raspberry Pi camera not found'
-print('Raspberry Pi camera found')
+#assert rpicam.checkCamera(), 'Raspberry Pi camera not found'
+#print('Raspberry Pi camera found')
 
-debugCvSender = cvFramesSender(client)
-debugCvSender.start()
+#debugCvSender = cvFramesSender(client)
+#debugCvSender.start()
 
 print('OpenCV version: %s' % cv2.__version__)
 
 #создаем трансляцию с камеры (тип потока h264/mjpeg, разрешение, частота кадров, хост куда шлем, функция обрабтчик кадров)
-rpiCamStreamer = rpicam.RPiCamStreamer(FORMAT, RESOLUTION, FRAMERATE, (CONTROL_IP, RTP_PORT), onFrameCallback)
-rpiCamStreamer.start() #запускаем трансляцию
+#rpiCamStreamer = rpicam.RPiCamStreamer(FORMAT, RESOLUTION, FRAMERATE, (CONTROL_IP, RTP_PORT), onFrameCallback)
+#rpiCamStreamer.start() #запускаем трансляцию
 
 #поток обработки кадров    
-frameHandler = FrameHandler(rpiCamStreamer, debugCvSender, setSpeed)
-frameHandler.start() #запускаем обработку
+#frameHandler = FrameHandler(rpiCamStreamer, debugCvSender, setSpeed)
+#frameHandler.start() #запускаем обработку
     
 
 
@@ -401,13 +468,13 @@ while not _stopping:
         _stopping = True
 
 #останавливаем обработку кадров
-frameHandler.stop()
+#frameHandler.stop()
 work.stop()
-debugCvSender.stop()
+#debugCvSender.stop()
 adc.stop()
 O.stop()
 #останов трансляции c камеры
-rpiCamStreamer.stop()    
-rpiCamStreamer.close()
+#rpiCamStreamer.stop()    
+#rpiCamStreamer.close()
 
 setSpeed(0,0)
