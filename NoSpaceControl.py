@@ -254,7 +254,7 @@ class threadingJoy(threading.Thread):#класс джойстика
             self.Arm1 = 135
             self.Arm2 = 135
             self.RotateGripper = 90
-            self.Gripper = 180
+            self.Gripper = 160
         except:
             pass
         

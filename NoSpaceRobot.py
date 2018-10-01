@@ -47,7 +47,7 @@ Auto = False#состояние автономки
 Led = False
 
 #################################################################
-'''
+
 class FrameHandler(threading.Thread):
     
     def __init__(self, stream, frameSender, setSpeed):
@@ -57,7 +57,6 @@ class FrameHandler(threading.Thread):
         self.controlRate = 15
         self.sender = frameSender
         self.setSpeed = setSpeed
-        self.camera = cam
         self.daemon = True
         self.rpiCamStream = stream
         self._frame = None
@@ -135,7 +134,7 @@ class FrameHandler(threading.Thread):
             self._frame = frame
             self._newFrameEvent.set() #задали событие
         return self._newFrameEvent.is_set()
-'''
+
 #################################################################
 
 class onWorking(threading.Thread):
@@ -225,7 +224,7 @@ class onWorking(threading.Thread):
         self._stopping = True
         
 #################################################################
-'''        
+
 class cvFramesSender(threading.Thread):
     def __init__(self, client):
         threading.Thread.__init__(self)
@@ -252,7 +251,7 @@ class cvFramesSender(threading.Thread):
 
     def stop(self):
         self._stopping = True
-'''
+
 #################################################################
 
 class Onliner(threading.Thread):
@@ -333,7 +332,7 @@ def defaultArmPos():
     Arm1.SetValue(135)
     Arm2.SetValue(135)
     rotateGripper.SetValue(90)
-    gripper.SetValue(180)
+    gripper.SetValue(140)
     return 0
 
 def defaultCamPos():
@@ -400,7 +399,7 @@ print("Local IP is: %s" % IP)
 O = Onliner()
 O.start()
 
-server = SimpleXMLRPCServer((IP, PORT), logRequests=True)#создаём сервер
+server = SimpleXMLRPCServer((IP, PORT), logRequests=False)#создаём сервер
 print("Listening on port %d..." % PORT)
 
 server.register_function(setSpeed, "setSpeed")#регистрируем функции
@@ -439,21 +438,23 @@ while not CONNECTION:
 client = xmlrpc.client.ServerProxy("http://%s:%d" % (CONTROL_IP, PORT))
 
 #проверка наличия камеры в системе  
-#assert rpicam.checkCamera(), 'Raspberry Pi camera not found'
-#print('Raspberry Pi camera found')
+assert rpicam.checkCamera(), 'Raspberry Pi camera not found'
+print('Raspberry Pi camera found')
 
-#debugCvSender = cvFramesSender(client)
-#debugCvSender.start()
+debugCvSender = cvFramesSender(client)
+debugCvSender.start()
 
 print('OpenCV version: %s' % cv2.__version__)
 
 #создаем трансляцию с камеры (тип потока h264/mjpeg, разрешение, частота кадров, хост куда шлем, функция обрабтчик кадров)
-#rpiCamStreamer = rpicam.RPiCamStreamer(FORMAT, RESOLUTION, FRAMERATE, (CONTROL_IP, RTP_PORT), onFrameCallback)
-#rpiCamStreamer.start() #запускаем трансляцию
+rpiCamStreamer = rpicam.RPiCamStreamer(FORMAT, RESOLUTION, FRAMERATE, (CONTROL_IP, RTP_PORT), onFrameCallback)
+rpiCamStreamer.setRotation(180)
+rpiCamStreamer.start() #запускаем трансляцию
 
 #поток обработки кадров    
-#frameHandler = FrameHandler(rpiCamStreamer, debugCvSender, setSpeed)
-#frameHandler.start() #запускаем обработку
+frameHandler = FrameHandler(rpiCamStreamer, debugCvSender, setSpeed)
+
+frameHandler.start() #запускаем обработку
     
 
 
@@ -468,13 +469,13 @@ while not _stopping:
         _stopping = True
 
 #останавливаем обработку кадров
-#frameHandler.stop()
+frameHandler.stop()
 work.stop()
-#debugCvSender.stop()
+debugCvSender.stop()
 adc.stop()
 O.stop()
 #останов трансляции c камеры
-#rpiCamStreamer.stop()    
-#rpiCamStreamer.close()
+rpiCamStreamer.stop()    
+rpiCamStreamer.close()
 
 setSpeed(0,0)
