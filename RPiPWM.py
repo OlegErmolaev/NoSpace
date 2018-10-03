@@ -50,12 +50,11 @@ GetBattery - Вызывает метод GetVoltage, домножает полу
 
 class Battery(threading.Thread):
     def __init__(self, vRef=3.3, gain=7.66):
-        threading.Thread.__init__(self)
         self._addr = 0x4D
         self._vRef = vRef
         self._gain = gain
         self._i2c = _I2c()
-        threading.Thread.__init__(self)
+        threading.Thread.__init__(self, daemon=True)
         self._exit = False  # флаг завершения тредов
         self._filteredVoltage = 0   # отфильтрованное значение напряжения
         self._K = 0.1   # коэффициент фильтрации
@@ -117,6 +116,7 @@ _INVRT = 0x10       # инверсный или неинверсный выхо�
 _OUTDRV = 0x04      # способ подключения светодиодов (см. даташит, нам это вроде не надо)
 
 # при частоте ШИМ 50 Гц (20 мс) получаем
+_parrot_ms = 205    # коэффициент преобразования 205 попугаев ~ 1 мс
 _min = 205  # 1 мс (~ 4096/20)
 _max = 410  # 2 мс (~ 4096*2/20)
 _range = _max - _min  # диапазон от min до max, нужен для вычислений
@@ -144,6 +144,7 @@ _pwmList= {}    # глобальный словарь, который содер
 
 class _PwmMode(IntEnum):    # список режимов работы
     servo90 = 90            # серва 90 градусов
+    servo120 = 120          # серва 120 градусов
     servo180 = 180          # серва 180 градусов
     servo270 = 270          # серва 270 градусов
     forwardMotor = 100      # мотор без реверса
@@ -161,6 +162,7 @@ class PwmBase:
         self._mode = mode
         self._extended = extended
         self._value = 0     # значение, которе установлено на канале
+        self._valueParrot = 0   # значение шим, которое установленно на канале в попугаях, понятных микросхеме
         if not _pwmIsInited:    # если микросхема еще не была инициализирована
             self._i2c.WriteByteData(_PCA9685_ADDRESS, _MODE2, _OUTDRV)
             self._i2c.WriteByteData(_PCA9685_ADDRESS, _MODE1, _ALLCALL)
@@ -192,6 +194,23 @@ class PwmBase:
         self._i2c.WriteByteData(_PCA9685_ADDRESS, _LED0_ON_H + 4 * self._channel, 0 >> 8)
         self._i2c.WriteByteData(_PCA9685_ADDRESS, _LED0_OFF_L + 4 * self._channel, value & 0xFF)  # момент выключения в цикле
         self._i2c.WriteByteData(_PCA9685_ADDRESS, _LED0_OFF_H + 4 * self._channel, value >> 8)
+
+    def SetMcs(self, value):    # установка значения на канал в мкс
+        if value > 20000:       # обрезаем диапазон - от 20 мс до 0 мс
+            value = 20000
+        if value < 0:
+            value = 0
+        self._value = value     # запоминаем значение до преобразований
+        value /= 1000           # приводим мкс к мс
+        value *= _parrot_ms     # приводим мс к попугаям которые затем задаются на ШИМ
+        if value > 4095:        # обрезаем максимальное значение, чтобы микросхема не сходила с ума
+            value = 4095
+        self._valueParrot = value   # запоминаем значение в попугаях, чтобы затем выводить его в мс на канале
+        self._SetPwm(int(value))
+
+    def GetMcs(self):   # возвращает текущее значение длительности импульса, выставленное на канале, в мкс
+        # значение 205 примерно соответствует 1 мс, при частоте 50 Гц
+        return int((self._valueParrot / _parrot_ms)*1000)
 
     def GetValue(self):     # возвращает значение, установленное на канале
         return self._value
@@ -246,9 +265,8 @@ class PwmBase:
                     value += _wideMin    # сдвигаем диапазон 0-range -> min-max
                     # value *= _expWideRange/self._mode.value   # изменяем диапазон 0-mode -> 0-range
                     # value += _expWideMin    # сдвигаем диапазон 0-range -> min-max
+        self._valueParrot = value   # запоминаем значение в попугаях, чтобы возвращать его в мс на канале
         self._SetPwm(int(value))  # устанавливаем значение
-###
-###
 
 
 '''
@@ -263,6 +281,17 @@ class Servo90(PwmBase):     # Класс для управления серво�
         if _pwmList.get(channel) is None:
             _pwmList[channel] = mode    # отмечаем, что канал занят
             super(Servo90, self).__init__(channel, mode, extended)
+        else:
+            raise ValueError("This channel is already used!")
+
+
+class Servo120(PwmBase):
+    def __init__(self, channel, extended=False):
+        global _pwmList
+        mode = _PwmMode.servo120
+        if _pwmList.get(channel) is None:
+            _pwmList[channel] = mode  # отмечаем, что канал занят
+            super(Servo120, self).__init__(channel, mode, extended)
         else:
             raise ValueError("This channel is already used!")
 
@@ -323,7 +352,6 @@ class Switch(PwmBase):    # класс, реализующий возможно�
             super(Switch, self).__init__(channel, mode, extended)
         else:
             raise ValueError("This channel is already used!")
-
 
 ###
 '''

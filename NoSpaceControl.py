@@ -13,11 +13,12 @@ import numpy as np
 from queue import Queue
 
 #объявляем константы
-IP = '192.168.42.220'#IP робота
+IP = '192.168.0.106'#IP робота
 _IP = str(os.popen('hostname -I | cut -d\' \' -f1').readline().replace('\n','')) #получаем IP, удаляем \n
 PORT = 8000#портсервера xmlrpc
 SPEED = 80#скорость
 STEP_DEGREE = 5
+CAM_STEP = 3
 
 #потоковые классы
 class threadingJoy(threading.Thread):#класс джойстика
@@ -26,13 +27,13 @@ class threadingJoy(threading.Thread):#класс джойстика
         self.client = client#клиент
         self.J = RTCJoystick.Joystick()#джойстик
         
-        self.camPos = 90
+        self.camPos = 120
         
         self.RotateArm = 65
         self.Arm1 = 135
         self.Arm2 = 135
         self.RotateGripper = 90
-        self.Gripper = 180
+        self.Gripper = 160
         
         self._stopping = False
         try:
@@ -103,10 +104,10 @@ class threadingJoy(threading.Thread):#класс джойстика
                     self.Arm1 -= STEP_DEGREE*0.5
                 elif(Arm1 <= -80):
                     self.Arm1 -= STEP_DEGREE
-                if(self.Arm1 > 270):
-                    self.Arm1 = 270
-                elif(self.Arm1 < 0):
-                    self.Arm1 = 0
+                if(self.Arm1 > 222):
+                    self.Arm1 = 222
+                elif(self.Arm1 < 40):
+                    self.Arm1 = 40
 
                 if (Arm2 > 15 and Arm2 < 40):
                     self.Arm2 += STEP_DEGREE*0.25
@@ -122,8 +123,8 @@ class threadingJoy(threading.Thread):#класс джойстика
                     self.Arm2 -= STEP_DEGREE
                 if(self.Arm2 > 270):
                     self.Arm2 = 270
-                elif(self.Arm2 < 0):
-                    self.Arm2 = 0
+                elif(self.Arm2 < 30):
+                    self.Arm2 = 30
 
                 if (RotateGripper > 15 and RotateGripper < 40):
                     self.RotateGripper += STEP_DEGREE*0.25
@@ -156,6 +157,11 @@ class threadingJoy(threading.Thread):#класс джойстика
                     self.Gripper += STEP_DEGREE*0.5
                 elif(closeGrip >= 30):
                     self.Gripper += STEP_DEGREE
+
+                if(self.Gripper > 155):
+                    self.Gripper = 155
+                elif(self.Gripper < 30):
+                    self.Gripper = 30
                     
                 if(x != 0 and y != 0): # Если нажаты обе оси
                     leftSpeed = x*y*SPEED
@@ -226,24 +232,60 @@ class threadingJoy(threading.Thread):#класс джойстика
         except:
             pass
 
-    def camUp(self):
-        self.camPos += 1
+    def camUp(self):    
         try:
+            self.camPos += CAM_STEP
             self.client.cameraSet(self.camPos)
+            if(self.camPos > 150):
+                self.camPos = 150
         except:
-            pass
+            self.camPos -= CAM_STEP
+            try:
+                self.camPos += CAM_STEP
+                self.client.cameraSet(self.camPos)
+                if(self.camPos > 150):
+                    self.camPos = 150
+            except:
+                self.camPos -= CAM_STEP
+                try:
+                    self.camPos += CAM_STEP
+                    self.client.cameraSet(self.camPos)
+                    if(self.camPos > 150):
+                        self.camPos = 150
+                except:
+                    self.camPos -= CAM_STEP
+                    pass
+        print(self.camPos)
 
     def camDown(self):
-        self.camPos -= 1
         try:
+            self.camPos -= CAM_STEP
             self.client.cameraSet(self.camPos)
+            if(self.camPos < 106):
+                self.camPos = 106
         except:
-            pass
+            self.camPos += CAM_STEP
+            try:
+                self.camPos -= CAM_STEP
+                self.client.cameraSet(self.camPos)
+                if(self.camPos < 106):
+                    self.camPos = 106
+            except:
+                self.camPos += CAM_STEP
+                try:
+                    self.camPos -= CAM_STEP
+                    self.client.cameraSet(self.camPos)
+                    if(self.camPos < 106):
+                        self.camPos = 106
+                except:
+                    self.camPos += CAM_STEP
+                    pass
+        print(self.camPos)
 
     def camDefault(self):
         try:
             self.client.defaultCamPos()
-            self.camPos = 90
+            self.camPos = 120
         except:
             pass
 

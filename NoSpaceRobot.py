@@ -7,7 +7,6 @@ import os
 import colorama
 import cv2
 import numpy as np
-import psutil
 import threading
 from PIL import Image       # библиотеки для рисования на дисплее
 from PIL import ImageDraw
@@ -29,17 +28,17 @@ DEFAULT = '\033[39;49m'
 LEFT_CHANNEL = 15#левый борт
 RIGHT_CHANNEL = 14#правый борт
 
-LEFT_CORRECTION = 10
-RIGHT_CORRECTION = -15
+LEFT_CORRECTION = 0
+RIGHT_CORRECTION = -25
 
 IP = str(os.popen('hostname -I | cut -d\' \' -f1').readline().replace('\n',''))#получаем наш ip
 PORT = 8000#порт сервера
-CONTROL_IP = "192.168.42.100"#ip для трансляции пока вручную
+CONTROL_IP = "192.168.0.105"#ip для трансляции пока вручную
 RTP_PORT = 5000 #порт отправки RTP видео
 SENSIVITY = 102
 
-CAMERA_DEFAULT_POS = 90
-CAMERA_AUTO_POS = 120
+CAMERA_DEFAULT_POS = 120
+CAMERA_AUTO_POS = 150
 
 CONNECTION = False
 
@@ -172,7 +171,6 @@ class onWorking(threading.Thread):
                 self.waitTime = 0
                 while CONNECTION:
                     temp = rpicam.getCPUtemperature()
-                    load = psutil.cpu_percent()
                     voltage = adc.GetVoltageFiltered()
                     if(temp > 80):
                         tempS = RED + str("%.2f" % temp) + "°C"+DEFAULT
@@ -186,12 +184,7 @@ class onWorking(threading.Thread):
                     else:
                         voltageS = GREEN + str("%.2f" % voltage) + " V"+DEFAULT
 
-                    if load > 45:
-                        loadS = RED + str("%.2f" % load) + "%"+DEFAULT
-                    else:
-                        loadS = GREEN + str("%.2f" % load) + "%"+DEFAULT
-                        
-                    print ('CPU temp: %s CPU use: %s Voltage: %s' % (tempS, loadS, voltageS))
+                    print ('CPU temp: %s Voltage: %s' % (tempS, voltageS))
 
                     '''
                     self.draw.rectangle((0, 0, self.width, self.height), outline=0, fill=0)  # прямоугольник, залитый черным - очищаем дисплей
@@ -344,10 +337,18 @@ def rotateArmSet(value):
     return 0
 
 def Arm1Set(value):
+    if(value > 222):
+        value = 222
+    elif(value < 40):
+        value = 40
     Arm1.SetValue(value)
     return 0
 
 def Arm2Set(value):
+    if(value > 270):
+        value = 270
+    elif(value < 30):
+        value = 30
     Arm2.SetValue(value)
     return 0
 
@@ -356,10 +357,18 @@ def rotateGripperSet(value):
     return 0
 
 def gripperSet(value):
+    if(value > 155):
+        value = 155
+    elif(value < 30):
+        value = 30
     gripper.SetValue(value)
     return 0
 
 def cameraSet(value):
+    if(value > 150):
+        value = 150
+    elif(value < 106):
+        value = 106
     camera.SetValue(value)
     return 0
 
