@@ -30,10 +30,10 @@ class threadingJoy(threading.Thread):#класс джойстика
         self.camPos = 120
         
         self.RotateArm = 65
-        self.Arm1 = 135
-        self.Arm2 = 135
+        self.Arm1 = 45
+        self.Arm2 = 230
         self.RotateGripper = 90
-        self.Gripper = 160
+        self.Gripper = 120
         
         self._stopping = False
         try:
@@ -50,13 +50,13 @@ class threadingJoy(threading.Thread):#класс джойстика
                 self._stopping = True
         if not self._stopping:
             self.J.connectButton('a', self.auto)
-            self.J.connectButton('y', self.chLed)
+            self.J.connectButton('y', self.speedDown)
             self.J.connectButton('x', self.decSensivity)
             self.J.connectButton('b', self.incSensivity)
             self.J.connectButton('select', self.camDown)
             self.J.connectButton('start', self.camUp)
             self.J.connectButton('mode', self.armDefault)
-            self.J.connectButton('tr', self.camDefault)
+            self.J.connectButton('tr', self.speedUp)
 
 
     def run(self):
@@ -66,7 +66,7 @@ class threadingJoy(threading.Thread):#класс джойстика
         while not self._stopping:
             try:
                 y = int(self.J.Axis.get('hat0y'))
-                x = int(self.J.Axis.get('hat0x'))
+                x = -int(self.J.Axis.get('hat0x'))
 
                 rotateArm = int(self.J.Axis.get('x')*-100)
                 Arm1 = int(self.J.Axis.get('y')*100)
@@ -106,8 +106,8 @@ class threadingJoy(threading.Thread):#класс джойстика
                     self.Arm1 -= STEP_DEGREE
                 if(self.Arm1 > 222):
                     self.Arm1 = 222
-                elif(self.Arm1 < 40):
-                    self.Arm1 = 40
+                elif(self.Arm1 < 45):
+                    self.Arm1 = 45
 
                 if (Arm2 > 15 and Arm2 < 40):
                     self.Arm2 += STEP_DEGREE*0.25
@@ -226,11 +226,9 @@ class threadingJoy(threading.Thread):#класс джойстика
         except:
             pass
 
-    def chLed(self):
-        try:
-            self.client.chLed()
-        except:
-            pass
+    def speedDown(self):
+        global SPEED    
+        SPEED -= 10
 
     def camUp(self):    
         try:
@@ -255,7 +253,6 @@ class threadingJoy(threading.Thread):#класс джойстика
                 except:
                     self.camPos -= CAM_STEP
                     pass
-        print(self.camPos)
 
     def camDown(self):
         try:
@@ -280,25 +277,34 @@ class threadingJoy(threading.Thread):#класс джойстика
                 except:
                     self.camPos += CAM_STEP
                     pass
-        print(self.camPos)
 
-    def camDefault(self):
-        try:
-            self.client.defaultCamPos()
-            self.camPos = 120
-        except:
-            pass
+    def speedUp(self):
+        global SPEED        
+        SPEED += 10
 
     def armDefault(self):
         try:
             self.client.defaultArmPos()
             self.RotateArm = 65
-            self.Arm1 = 135
-            self.Arm2 = 135
+            self.Arm1 = 40
+            self.Arm2 = 230
             self.RotateGripper = 90
-            self.Gripper = 160
         except:
-            pass
+            try:
+                self.client.defaultArmPos()
+                self.RotateArm = 65
+                self.Arm1 = 40
+                self.Arm2 = 230
+                self.RotateGripper = 90
+            except:
+                try:
+                    self.client.defaultArmPos()
+                    self.RotateArm = 65
+                    self.Arm1 = 40
+                    self.Arm2 = 230
+                    self.RotateGripper = 90
+                except:
+                    pass
         
     def stop(self):
         self._stopping = True

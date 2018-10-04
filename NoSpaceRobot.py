@@ -29,7 +29,7 @@ LEFT_CHANNEL = 15#левый борт
 RIGHT_CHANNEL = 14#правый борт
 
 LEFT_CORRECTION = 0
-RIGHT_CORRECTION = -25
+RIGHT_CORRECTION = -35
 
 IP = str(os.popen('hostname -I | cut -d\' \' -f1').readline().replace('\n',''))#получаем наш ip
 PORT = 8000#порт сервера
@@ -284,19 +284,13 @@ def setSpeed(left,right, flag=False):
     global RIGHT_CORRECTION
     global Auto
     if not Auto or flag:
-        leftMotor.SetValue(left + LEFT_CORRECTION)
-        rightMotor.SetValue(-right + RIGHT_CORRECTION)
+        leftMotor.SetValue(-left + LEFT_CORRECTION)
+        rightMotor.SetValue(right + RIGHT_CORRECTION)
     return 0
 
 def unLock():
     global CONNECTION
     CONNECTION = True
-    return 0
-
-def chLed():
-    global Led
-    Led = not Led
-    led.SetValue(Led)
     return 0
 
 def auto():
@@ -322,10 +316,9 @@ def decSensivity():
 
 def defaultArmPos():
     rotateArm.SetValue(65)
-    Arm1.SetValue(135)
-    Arm2.SetValue(135)
+    Arm1.SetValue(215)
+    Arm2.SetValue(230)
     rotateGripper.SetValue(90)
-    gripper.SetValue(140)
     return 0
 
 def defaultCamPos():
@@ -339,8 +332,8 @@ def rotateArmSet(value):
 def Arm1Set(value):
     if(value > 222):
         value = 222
-    elif(value < 40):
-        value = 40
+    elif(value < 45):
+        value = 45
     Arm1.SetValue(value)
     return 0
 
@@ -377,7 +370,7 @@ colorama.init()
 print("Initi..." + DEFAULT)
 leftMotor = RPiPWM.ReverseMotor(LEFT_CHANNEL)#инициализируем каналы
 rightMotor = RPiPWM.ReverseMotor(RIGHT_CHANNEL)
-led = RPiPWM.Switch(4)
+#led = RPiPWM.Switch(4)
 rotateArm = RPiPWM.Servo120(7, extended = True)
 Arm1 = RPiPWM.Servo270(8, extended = True)
 Arm2 = RPiPWM.Servo270(0, extended = True)
@@ -385,7 +378,6 @@ rotateGripper = RPiPWM.Servo180(9, extended = True)
 gripper = RPiPWM.Servo180(1, extended = True)
 camera = RPiPWM.Servo180(10, extended = True)
 
-led.SetValue(False)
 setSpeed(0,0)#инициализируем драйвера
 
 time.sleep(1)
@@ -416,7 +408,6 @@ server.register_function(auto, "auto")
 server.register_function(incSensivity, "incSensivity")
 server.register_function(decSensivity, "decSensivity")
 server.register_function(unLock, "unLock")
-server.register_function(chLed, "chLed")
 server.register_function(defaultArmPos, "defaultArmPos")
 server.register_function(defaultCamPos, "defaultCamPos")
 server.register_function(rotateArmSet, "rotateArmSet")
