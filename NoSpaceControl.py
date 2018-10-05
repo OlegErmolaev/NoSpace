@@ -13,7 +13,7 @@ import numpy as np
 from queue import Queue
 
 #объявляем константы
-IP = '192.168.0.106'#IP робота
+IP = '192.168.42.220'#IP робота
 _IP = str(os.popen('hostname -I | cut -d\' \' -f1').readline().replace('\n','')) #получаем IP, удаляем \n
 PORT = 8000#портсервера xmlrpc
 SPEED = 80#скорость
@@ -234,22 +234,22 @@ class threadingJoy(threading.Thread):#класс джойстика
         try:
             self.camPos += CAM_STEP
             self.client.cameraSet(self.camPos)
-            if(self.camPos > 150):
-                self.camPos = 150
+            if(self.camPos > 160):
+                self.camPos = 160
         except:
             self.camPos -= CAM_STEP
             try:
                 self.camPos += CAM_STEP
                 self.client.cameraSet(self.camPos)
-                if(self.camPos > 150):
-                    self.camPos = 150
+                if(self.camPos > 160):
+                    self.camPos = 160
             except:
                 self.camPos -= CAM_STEP
                 try:
                     self.camPos += CAM_STEP
                     self.client.cameraSet(self.camPos)
-                    if(self.camPos > 150):
-                        self.camPos = 150
+                    if(self.camPos > 160):
+                        self.camPos = 160
                 except:
                     self.camPos -= CAM_STEP
                     pass

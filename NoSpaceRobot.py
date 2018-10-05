@@ -33,12 +33,12 @@ RIGHT_CORRECTION = -35
 
 IP = str(os.popen('hostname -I | cut -d\' \' -f1').readline().replace('\n',''))#получаем наш ip
 PORT = 8000#порт сервера
-CONTROL_IP = "192.168.0.105"#ip для трансляции пока вручную
+CONTROL_IP = "192.168.42.100"#ip для трансляции пока вручную
 RTP_PORT = 5000 #порт отправки RTP видео
 SENSIVITY = 102
 
-CAMERA_DEFAULT_POS = 120
-CAMERA_AUTO_POS = 150
+CAMERA_DEFAULT_POS = 130
+CAMERA_AUTO_POS = 160
 
 CONNECTION = False
 
@@ -358,8 +358,8 @@ def gripperSet(value):
     return 0
 
 def cameraSet(value):
-    if(value > 150):
-        value = 150
+    if(value > 160):
+        value = 160
     elif(value < 106):
         value = 106
     camera.SetValue(value)

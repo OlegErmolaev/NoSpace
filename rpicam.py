@@ -28,7 +28,7 @@ def checkCamera():
     dct = {}
     for param in res.split(' '): #разбираем параметры
         tmp = param.split('=')
-        dct.update({tmp[0]: tmp[1]}) #помещаем в словарь
+        dct.update({tmp[0]: int(tmp[1])}) #помещаем в словарь
     return (dct['supported'] and dct['detected'])
 
 def getIP():
@@ -38,13 +38,14 @@ def getIP():
     return res
 
 class AppSrcStreamer(object):
-    def __init__(self, video = FORMAT_H264, resolution = (640, 480), framerate = 30, host = ('localhost', RTP_PORT), onFrameCallback = None, useOMX = True):        
-        self.size = 0
+    def __init__(self, video = FORMAT_H264, resolution = (640, 480), framerate = 30, host = ('localhost', RTP_PORT),
+                 onFrameCallback = None, useOMX = True, scale = 1):        
         self._host = host
         self._width = resolution[0]
         self._height = resolution[1]
+        self._scaleWidth = int(self._width*scale)
+        self._scaleHeight = int(self._height*scale)        
         self._needFrame = threading.Event() #флаг, необходимо сформировать OpenCV кадр
-        self.useOMX = useOMX
         self.playing = False
         self.paused = False
         self._onFrameCallback = None
@@ -53,16 +54,16 @@ class AppSrcStreamer(object):
         #инициализация Gstreamer
         Gst.init(None)
         #создаем pipeline
-        self.make_pipeline(video, self._width, self._height, framerate, host)
+        self._make_pipeline(video, self._width, self._height, framerate, host, useOMX, scale)
 
         self.bus = self.pipeline.get_bus()
         self.bus.add_signal_watch()
-        self.bus.connect('message', self.onMessage)
+        self.bus.connect('message', self._onMessage)
         
         self.pipeline.set_state(Gst.State.READY)
         print('GST pipeline READY')
         
-    def make_pipeline(self, video, width, height, framerate, host):     
+    def _make_pipeline(self, video, width, height, framerate, host, useOMX, scale):     
         # Создание GStreamer pipeline
         self.pipeline = Gst.Pipeline()
         rtpbin = Gst.ElementFactory.make('rtpbin')
@@ -119,54 +120,46 @@ class AppSrcStreamer(object):
             frameQueue = Gst.ElementFactory.make('queue', 'frame_queue')
         
             if video == FORMAT_H264: 
-                if self.useOMX:
+                if useOMX:
                     decoderName = 'omxh264dec' #отлично работает загрузка ЦП 200%
                 else:
                     decoderName = 'avdec_h264' #хреново работает загрузка ЦП 120% 
                     #decoder = Gst.ElementFactory.make('avdec_h264_mmal') #не заработал
             else:
-                if self.useOMX:
+                if useOMX:
                     decoderName = 'omxmjpegdec' #
                 else:
                     decoderName = 'avdec_mjpeg' #
                     #decoder = Gst.ElementFactory.make('jpegdec') #
             decoder = Gst.ElementFactory.make(decoderName)
             
-            
             videoconvert = Gst.ElementFactory.make('videoconvert')
             
-            def newSample(sink, data):     # callback функция, вызываемая при каждом приходящем кадре
-                if self._needFrame.is_set(): #если выставлен флаг нужен кадр
-                    sample = sink.emit('pull-sample')
-                    sampleBuff = sample.get_buffer()
-
-                    #создаем массив cvFrame в формате opencv
-                    cvFrame = np.ndarray(
-                        (self._height, self._width, 3),
-                        buffer = sampleBuff.extract_dup(0, sampleBuff.get_size()), dtype = np.uint8)
-            
-                    self._onFrameCallback(cvFrame) #вызываем обработчик в качестве параметра передаем cv2 кадр
-                    
-                    self._needFrame.clear() #сбрасываем флаг
-                return Gst.FlowReturn.OK
+            if scale != 1:
+                videoscale = Gst.ElementFactory.make('videoscale')
+                videoscaleFilter = Gst.ElementFactory.make('capsfilter', 'scalefilter')
+                videoscaleCaps = Gst.caps_from_string('video/x-raw, width=%d, height=%d' % (self._scaleWidth, self._scaleHeight)) # формат данных после изменения размера
+                videoscaleFilter.set_property('caps', videoscaleCaps)       
         
             ### создаем свой sink для перевода из GST в CV
             appsink = Gst.ElementFactory.make('appsink')
 
-            cvcaps = Gst.caps_from_string('video/x-raw,format=BGR') # формат принимаемых данных
+            cvcaps = Gst.caps_from_string('video/x-raw, format=BGR') # формат принимаемых данных
             appsink.set_property('caps', cvcaps)
             appsink.set_property('sync', False)
             #appsink.set_property('async', False)
             appsink.set_property('drop', True)
             appsink.set_property('max-buffers', 1)
             appsink.set_property('emit-signals', True)
-            appsink.connect('new-sample', newSample, appsink)
+            appsink.connect('new-sample', self._newSample, appsink)
 
         # добавляем все элементы в pipeline
         elemList = [self.appsrc, rtpbin, parser, payloader, udpsink_rtpout,
                     udpsink_rtcpout, udpsrc_rtcpin]
         if not self._onFrameCallback is None:
             elemList.extend([tee, rtpQueue, frameQueue, decoder, videoconvert, appsink])
+            if scale != 1:
+                elemList.extend([videoscale, videoscaleFilter])
             
         for elem in elemList:
             self.pipeline.add(elem)
@@ -191,7 +184,13 @@ class AppSrcStreamer(object):
 
             #2-я ветка onFrame
             ret = ret and frameQueue.link(decoder)
-            ret = ret and decoder.link(videoconvert)
+            if scale != 1:        
+                ret = ret and decoder.link(videoscale)
+                ret = ret and videoscale.link(videoscaleFilter)
+                ret = ret and videoscaleFilter.link(videoconvert)
+            else:
+                ret = ret and decoder.link(videoconvert)
+
             ret = ret and videoconvert.link(appsink)
             
             # подключаем tee к rtpQueue
@@ -209,8 +208,23 @@ class AppSrcStreamer(object):
         if not ret:
             print('ERROR: Elements could not be linked')
             sys.exit(1)
+
+    def _newSample(self, sink, data):     # callback функция, вызываемая при каждом приходящем кадре
+        if self._needFrame.is_set(): #если выставлен флаг нужен кадр
+            sample = sink.emit('pull-sample')
+            sampleBuff = sample.get_buffer()
+
+            #создаем массив cvFrame в формате opencv
+            cvFrame = np.ndarray(
+                (self._scaleHeight, self._scaleWidth, 3),
+                buffer = sampleBuff.extract_dup(0, sampleBuff.get_size()), dtype = np.uint8)
             
-    def onMessage(self, bus, message):
+            self._onFrameCallback(cvFrame) #вызываем обработчик в качестве параметра передаем cv2 кадр
+                    
+            self._needFrame.clear() #сбрасываем флаг
+        return Gst.FlowReturn.OK
+            
+    def _onMessage(self, bus, message):
         #print('Message: %s' % str(message.type))
         t = message.type
         if t == Gst.MessageType.EOS:
@@ -230,8 +244,10 @@ class AppSrcStreamer(object):
         print('Streaming RTP on %s:%d' % (self._host[0], self._host[1]))
 
     def stop_pipeline(self):
-        self.pipeline.set_state(Gst.State.PAUSED)
-        print('GST pipeline PAUSED')
+        self.pause_pipeline()
+        self.ready_pipeline()
+        
+    def ready_pipeline(self):
         self.pipeline.set_state(Gst.State.READY)
         print('GST pipeline READY')
 
@@ -257,7 +273,8 @@ class AppSrcStreamer(object):
         return self._needFrame.is_set()
 
 class RPiCamStreamer(object):
-    def __init__(self, video = FORMAT_H264, resolution = (640, 480), framerate = 30, host = ('localhost', RTP_PORT), onFrameCallback = None):
+    def __init__(self, video = FORMAT_H264, resolution = (640, 480), framerate = 30, host = ('localhost', RTP_PORT),
+                 onFrameCallback = None, scale = 1):
         self._videoFormat = 'h264'
         self._quality = 20
         self._bitrate = 1000000
@@ -269,7 +286,10 @@ class RPiCamStreamer(object):
         self.camera.resolution = resolution
         self.camera.framerate = framerate
         self._stream = AppSrcStreamer(video, resolution,
-            framerate, host, onFrameCallback)
+            framerate, host, onFrameCallback, True, scale)
+        
+    def init(self):
+        pass
 
     def start(self):
         print('Start RPi camera recording: %s:%dx%d, framerate=%d, bitrate=%d, quality=%d'
