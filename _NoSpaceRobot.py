@@ -8,8 +8,6 @@ import colorama
 import cv2
 import numpy as np
 import threading
-import pickle
-import socket
 from PIL import Image       # библиотеки для рисования на дисплее
 from PIL import ImageDraw
 from PIL import ImageFont
@@ -17,10 +15,10 @@ import rpicam
 from queue import Queue
 
 FORMAT = rpicam.FORMAT_MJPEG #поток H264
-WIDTH, HEIGHT = 320, 180
+WIDTH, HEIGHT = 640, 480
 
 RESOLUTION = (WIDTH, HEIGHT)#разрешение
-FRAMERATE = 10#частота кадров
+FRAMERATE = 30#частота кадров
 
 RED = '\033[31;1m'
 YELLOW = '\033[33;1m'
@@ -42,6 +40,8 @@ SENSIVITY = 102
 CAMERA_DEFAULT_POS = 130
 CAMERA_AUTO_POS = 160
 
+CONNECTION = False
+
 Auto = False#состояние автономки
 Led = False
 
@@ -50,13 +50,10 @@ Led = False
 class FrameHandler(threading.Thread):
     
     def __init__(self, stream, frameSender, setSpeed):
-        global WIDTH, HEIGHT
         super(FrameHandler, self).__init__()
         self.middle = 106
-        self.frameWidth = 4*int(WIDTH/6) - (2*int(WIDTH/6))
-        self.width = WIDTH
-        self.height = HEIGHT
-        self.controlRate = 25
+        self.frameWidth = 4*int(640/6)+15 - (2*int(640/6)-15)
+        self.controlRate = 15
         self.sender = frameSender
         self.setSpeed = setSpeed
         self.daemon = True
@@ -74,12 +71,12 @@ class FrameHandler(threading.Thread):
         while not self._stopped.is_set():#пока мы живём
             while Auto:#если врублена автономка
                 
-                height = self.height#инициализируем размер фрейма
-                width = self.width
+                height = 480#инициализируем размер фрейма
+                width = 640
                 self.rpiCamStream.frameRequest() #отправил запрос на новый кадр
                 self._newFrameEvent.wait() #ждем появления нового кадра
                 if not (self._frame is None): #если кадр есть
-                    frame = self._frame[4*int(height/5):self.height, 2*int(width/6):4*int(width/6)]#обрезаем для оценки инверсности
+                    frame = self._frame[4*int(height/5):height, 2*int(width/6)-15:4*int(width/6)+15]#обрезаем для оценки инверсности
                     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)#делаем ч/б
 
                     intensivity = int(gray.mean())#получаем среднее значение
@@ -159,6 +156,7 @@ class onWorking(threading.Thread):
         '''
 
         self._stopping = False
+        self.waitTime = 0
         
     def run(self):
         global IP
@@ -167,36 +165,53 @@ class onWorking(threading.Thread):
         global GREEN
         global YELLOW
         global DEFAULT
+        global waitTime
         while not self._stopping:
-            temp = rpicam.getCPUtemperature()
-            voltage = adc.GetVoltageFiltered()
-            
-            if(temp > 80):
-                tempS = RED + str("%.2f" % temp) + "°C"+DEFAULT
-            else:
-                tempS = GREEN + str("%.2f" % temp) + "°C"+DEFAULT
+            if CONNECTION:
+                self.waitTime = 0
+                while CONNECTION:
+                    temp = rpicam.getCPUtemperature()
+                    voltage = adc.GetVoltageFiltered()
+                    if(temp > 80):
+                        tempS = RED + str("%.2f" % temp) + "°C"+DEFAULT
+                    else:
+                        tempS = GREEN + str("%.2f" % temp) + "°C"+DEFAULT
                         
-            if voltage < 10:
-                voltageS = RED + str("%.2f" % voltage) + " V"+DEFAULT
-            elif voltage >= 10 and voltage < 11:
-                voltageS = YELLOW + str("%.2f" % voltage) + " V"+DEFAULT
+                    if voltage < 10:
+                        voltageS = RED + str("%.2f" % voltage) + " V"+DEFAULT
+                    elif voltage >= 10 and voltage < 11:
+                        voltageS = YELLOW + str("%.2f" % voltage) + " V"+DEFAULT
+                    else:
+                        voltageS = GREEN + str("%.2f" % voltage) + " V"+DEFAULT
+
+                    print ('CPU temp: %s Voltage: %s' % (tempS, voltageS))
+
+                    '''
+                    self.draw.rectangle((0, 0, self.width, self.height), outline=0, fill=0)  # прямоугольник, залитый черным - очищаем дисплей
+                    self.draw.text((self.x, self.top), "Ip: "+str(IP), font=self.font, fill=255)        # формируем текст
+                    self.draw.text((self.x, self.top + 8), "Battery: "+str("%.2f" % voltage)+ " V", font=self.font, fill=255)     # высота строки - 8 пикселей
+                    self.draw.text((self.x, self.top + 16), "CPU temp: "+str("%.2f" % temp) + "°C", font=self.font, fill=255)
+                    self.draw.text((self.x, self.top + 24), "CPU load: "+str("%.2f" % load)+"%", font=self.font, fill=255)
+                    
+                    self.disp.Image(self.image)   # записываем изображение в буффер
+                    self.disp.Display()      # выводим его на экран
+                    '''
+
+                    time.sleep(2)
             else:
-                voltageS = GREEN + str("%.2f" % voltage) + " V"+DEFAULT
+                while not CONNECTION:
+                    voltage = adc.GetVoltageFiltered()
+                    '''
+                    self.draw.rectangle((0, 0, self.width, self.height), outline=0, fill=0)  # прямоугольник, залитый черным - очищаем дисплей
+                    self.draw.text((self.x, self.top), "Ip: "+str(IP), font=self.font, fill=255)        # формируем текст
+                    self.draw.text((self.x, self.top + 8), "Battery: "+str("%.2f" % voltage)+ " V", font=self.font, fill=255)     # высота строки - 8 пикселей
+                    self.draw.text((self.x, self.top + 16), "Waiting pc..."+str(300 - waitTime), font=self.font, fill=255)
 
-            print ('CPU temp: %s Voltage: %s' % (tempS, voltageS))
+                    self.disp.Image(self.image)   # записываем изображение в буффер
+                    self.disp.Display()      # выводим его на экран
+                    '''
 
-            '''
-            self.draw.rectangle((0, 0, self.width, self.height), outline=0, fill=0)  # прямоугольник, залитый черным - очищаем дисплей
-            self.draw.text((self.x, self.top), "Ip: "+str(IP), font=self.font, fill=255)        # формируем текст
-            self.draw.text((self.x, self.top + 8), "Battery: "+str("%.2f" % voltage)+ " V", font=self.font, fill=255)     # высота строки - 8 пикселей
-            self.draw.text((self.x, self.top + 16), "CPU temp: "+str("%.2f" % temp) + "°C", font=self.font, fill=255)
-            self.draw.text((self.x, self.top + 24), "CPU load: "+str("%.2f" % load)+"%", font=self.font, fill=255)
-            
-            self.disp.Image(self.image)   # записываем изображение в буффер
-            self.disp.Display()      # выводим его на экран
-            '''
-
-            time.sleep(2)  
+                    time.sleep(1)    
 
     def stop(self):
         self._stopping = True
@@ -260,53 +275,6 @@ class Onliner(threading.Thread):
         self._stopping = True
     
 #################################################################        
-
-class receiver(threading.Thread):
-    def __init__(self, sock, onliner, setSpeed):
-        threading.Thread.__init__(self)
-        self.channels = dict()
-        self.channelKeys = []
-        self.sock = sock
-        self.O = O
-        self.setSpeed = setSpeed
-
-        self._stopping = False
-
-    def run(self):
-        global SPEED, Auto, SENSIVITY, CAMERA_AUTO_POS, CAMERA_AUTO_POS, IP
-        while (not self._stopping):
-            print('wait data...')
-            data, addr = self.sock.recvfrom(16384)
-            data = pickle.loads(data)
-            for i in range(len(self.channelKeys)):
-                key = self.channelKeys[i]
-                if(key in data):
-                    ch = self.channels.get(key)
-                    ch.SetValue(data.get(key))
-            Auto = data.get('auto')
-            if(Auto):
-                self.channels.get('camera').SetValue(CAMERA_AUTO_POS)
-                
-            SENSIVITY = data.get('sensivity')
-            leftSpeed = data.get('leftSpeed')
-            rightSpeed = data.get('rightSpeed')
-            self.setSpeed(leftSpeed, rightSpeed)
-            self.O.getOnlineFlag()
-            
-        
-    def addChannel(self, channelName, obj):
-        if (channelName in self.channelKeys ):
-            print('имя уже занято')
-            exit(-1)
-        else:
-            self.channels.update({channelName : obj})
-            self.channelKeys.append(channelName)
-            
-        
-    def stop(self):
-        self._stopping = True
-        
-##################################################################
         
 def onFrameCallback(frame): #обработчик события 'получен кадр'
     frameHandler.setFrame(frame) #задали новый кадр
@@ -318,6 +286,84 @@ def setSpeed(left,right, flag=False):
     if not Auto or flag:
         leftMotor.SetValue(-left + LEFT_CORRECTION)
         rightMotor.SetValue(right + RIGHT_CORRECTION)
+    return 0
+
+def unLock():
+    global CONNECTION
+    CONNECTION = True
+    return 0
+
+def auto():
+    global Auto
+    Auto = not Auto
+    if(Auto):
+        camera.SetValue(CAMERA_AUTO_POS)
+    else:
+        camera.SetValue(CAMERA_DEFAULT_POS)        
+    return 0
+
+def incSensivity():
+    global SENSIVITY
+    SENSIVITY += 1
+    print(SENSIVITY)
+    return SENSIVITY
+
+def decSensivity():
+    global SENSIVITY
+    SENSIVITY -= 1
+    print(SENSIVITY)
+    return SENSIVITY
+
+def defaultArmPos():
+    rotateArm.SetValue(65)
+    Arm1.SetValue(215)
+    Arm2.SetValue(230)
+    rotateGripper.SetValue(90)
+    return 0
+
+def defaultCamPos():
+    camera.SetValue(CAMERA_DEFAULT_POS)
+    return 0
+
+def rotateArmSet(value):
+    rotateArm.SetValue(value)
+    return 0
+
+def Arm1Set(value):
+    if(value > 222):
+        value = 222
+    elif(value < 45):
+        value = 45
+    Arm1.SetValue(value)
+    return 0
+
+def Arm2Set(value):
+    if(value > 270):
+        value = 270
+    elif(value < 30):
+        value = 30
+    Arm2.SetValue(value)
+    return 0
+
+def rotateGripperSet(value):
+    rotateGripper.SetValue(value)
+    return 0
+
+def gripperSet(value):
+    if(value > 155):
+        value = 155
+    elif(value < 30):
+        value = 30
+    gripper.SetValue(value)
+    return 0
+
+def cameraSet(value):
+    if(value > 160):
+        value = 160
+    elif(value < 106):
+        value = 106
+    camera.SetValue(value)
+    return 0
 
 colorama.init()
 
@@ -354,27 +400,40 @@ print("Local IP is: %s" % IP)
 O = Onliner()
 O.start()
 
+server = SimpleXMLRPCServer((IP, PORT), logRequests=False)#создаём сервер
+print("Listening on port %d..." % PORT)
 
-sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-sock.bind((IP, 7000))
+server.register_function(setSpeed, "setSpeed")#регистрируем функции
+server.register_function(auto, "auto")
+server.register_function(incSensivity, "incSensivity")
+server.register_function(decSensivity, "decSensivity")
+server.register_function(unLock, "unLock")
+server.register_function(defaultArmPos, "defaultArmPos")
+server.register_function(defaultCamPos, "defaultCamPos")
+server.register_function(rotateArmSet, "rotateArmSet")
+server.register_function(Arm1Set, "Arm1Set")
+server.register_function(Arm2Set, "Arm2Set")
+server.register_function(rotateGripperSet, "rotateGripperSet")
+server.register_function(gripperSet, "gripperSet")
+server.register_function(cameraSet, "cameraSet")
+server.register_function(O.getOnlineFlag, "getOnline")
 
-server = receiver(sock, O, setSpeed)
+t1 = threading.Thread(target = server.serve_forever)
+t1.start()
 
-server.addChannel("rotateArm", rotateArm)
-server.addChannel("Arm1", Arm1)
-server.addChannel("Arm2", Arm2)
-server.addChannel("rotateGripper", rotateGripper)
-server.addChannel("gripper", gripper)
-server.addChannel("camera", camera)
-
-server.start()
-print("Listening on port 7000...")
-
-
+waitTime = 0
 
 work = onWorking()
 work.start()
 
+while not CONNECTION:
+    if waitTime < 300:
+        waitTime += 1
+        print(waitTime)
+        time.sleep(1)
+    else:
+        print("Goodbye")
+        os.system("sudo shutdown now")
 
 client = xmlrpc.client.ServerProxy("http://%s:%d" % (CONTROL_IP, PORT))
 
@@ -415,7 +474,6 @@ work.stop()
 debugCvSender.stop()
 adc.stop()
 O.stop()
-server.stop()
 #останов трансляции c камеры
 rpiCamStreamer.stop()    
 rpiCamStreamer.close()

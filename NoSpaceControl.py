@@ -6,6 +6,8 @@ import receiver
 import threading
 from xmlrpc.server import SimpleXMLRPCServer
 import xmlrpc.client
+import socket
+import pickle
 import time
 import os
 import cv2
@@ -20,20 +22,24 @@ SPEED = 80#скорость
 STEP_DEGREE = 5
 CAM_STEP = 3
 
+AUTO = False
+SENSIVITY = 102
+
 #потоковые классы
 class threadingJoy(threading.Thread):#класс джойстика
-    def __init__(self, client):
+    def __init__(self, sock):
         threading.Thread.__init__(self)
-        self.client = client#клиент
         self.J = RTCJoystick.Joystick()#джойстик
         
         self.camPos = 120
         
-        self.RotateArm = 65
-        self.Arm1 = 45
+        self.RotateArm = 60
+        self.Arm1 = 40
         self.Arm2 = 230
         self.RotateGripper = 90
         self.Gripper = 120
+
+        self.sock = sock
         
         self._stopping = False
         try:
@@ -62,269 +68,185 @@ class threadingJoy(threading.Thread):#класс джойстика
     def run(self):
         global SPEED
         global STEP_DEGREE
+        global SENSIVITY
+        global AUTO
+        global IP
         time.sleep(0.5)
         while not self._stopping:
-            try:
-                y = int(self.J.Axis.get('hat0y'))
-                x = -int(self.J.Axis.get('hat0x'))
+            y = int(self.J.Axis.get('hat0y'))
+            x = -int(self.J.Axis.get('hat0x'))
 
-                rotateArm = int(self.J.Axis.get('x')*-100)
-                Arm1 = int(self.J.Axis.get('y')*100)
-                Arm2 = int(self.J.Axis.get('ry')*100)
-                RotateGripper = int(self.J.Axis.get('rx')*100)
-                openGrip = int(self.J.Axis.get('z')*100)
-                closeGrip = int(self.J.Axis.get('rz')*100)
+            rotateArm = int(self.J.Axis.get('x')*-100)
+            Arm1 = int(self.J.Axis.get('y')*100)
+            Arm2 = int(self.J.Axis.get('ry')*100)
+            RotateGripper = int(self.J.Axis.get('rx')*100)
+            openGrip = int(self.J.Axis.get('z')*100)
+            closeGrip = int(self.J.Axis.get('rz')*100)
                     
-                if (rotateArm > 15 and rotateArm < 40):
-                    self.RotateArm += STEP_DEGREE*0.25
-                elif(rotateArm >=40 and rotateArm < 80):
-                    self.RotateArm += STEP_DEGREE*0.5
-                elif(rotateArm >= 70):
-                    self.RotateArm += STEP_DEGREE
-                elif (rotateArm < -15 and rotateArm > -40):
-                    self.RotateArm -= STEP_DEGREE*0.25
-                elif(rotateArm <= -40 and rotateArm > -80):
-                    self.RotateArm -= STEP_DEGREE*0.5
-                elif(rotateArm <= -80):
-                    self.RotateArm -= STEP_DEGREE
-                if(self.RotateArm > 120):
-                    self.RotateArm = 120
-                elif(self.RotateArm < 0):
-                    self.RotateArm = 0
+            if (rotateArm > 15 and rotateArm < 40):
+                self.RotateArm += STEP_DEGREE*0.25
+            elif(rotateArm >=40 and rotateArm < 80):
+                self.RotateArm += STEP_DEGREE*0.5
+            elif(rotateArm >= 70):
+                self.RotateArm += STEP_DEGREE
+            elif (rotateArm < -15 and rotateArm > -40):
+                self.RotateArm -= STEP_DEGREE*0.25
+            elif(rotateArm <= -40 and rotateArm > -80):
+                self.RotateArm -= STEP_DEGREE*0.5
+            elif(rotateArm <= -80):
+                self.RotateArm -= STEP_DEGREE
+            if(self.RotateArm > 120):
+                self.RotateArm = 120
+            elif(self.RotateArm < 0):
+                self.RotateArm = 0
 
-                if (Arm1 > 15 and Arm1 < 40):
-                    self.Arm1 += STEP_DEGREE*0.25
-                elif(Arm1 >=40 and Arm1 < 80):
-                    self.Arm1 += STEP_DEGREE*0.5
-                elif(Arm1 >= 70):
-                    self.Arm1 += STEP_DEGREE
-                elif (Arm1 < -15 and Arm1 > -40):
-                    self.Arm1 -= STEP_DEGREE*0.25
-                elif(Arm1 <= -40 and Arm1 > -80):
-                    self.Arm1 -= STEP_DEGREE*0.5
-                elif(Arm1 <= -80):
-                    self.Arm1 -= STEP_DEGREE
-                if(self.Arm1 > 222):
-                    self.Arm1 = 222
-                elif(self.Arm1 < 45):
-                    self.Arm1 = 45
+            if (Arm1 > 15 and Arm1 < 40):
+                self.Arm1 += STEP_DEGREE*0.25
+            elif(Arm1 >=40 and Arm1 < 80):
+                self.Arm1 += STEP_DEGREE*0.5
+            elif(Arm1 >= 70):
+                self.Arm1 += STEP_DEGREE
+            elif (Arm1 < -15 and Arm1 > -40):
+                self.Arm1 -= STEP_DEGREE*0.25
+            elif(Arm1 <= -40 and Arm1 > -80):
+                self.Arm1 -= STEP_DEGREE*0.5
+            elif(Arm1 <= -80):
+                self.Arm1 -= STEP_DEGREE
+            if(self.Arm1 > 222):
+                self.Arm1 = 222
+            elif(self.Arm1 < 45):
+                self.Arm1 = 45
 
-                if (Arm2 > 15 and Arm2 < 40):
-                    self.Arm2 += STEP_DEGREE*0.25
-                elif(Arm2 >=40 and Arm2 < 80):
-                    self.Arm2 += STEP_DEGREE*0.5
-                elif(Arm2 >= 70):
-                    self.Arm2 += STEP_DEGREE
-                elif (Arm2 < -15 and Arm2 > -40):
-                    self.Arm2 -= STEP_DEGREE*0.25
-                elif(Arm2 <= -40 and Arm2 > -80):
-                    self.Arm2 -= STEP_DEGREE*0.5
-                elif(Arm2 <= -80):
-                    self.Arm2 -= STEP_DEGREE
-                if(self.Arm2 > 270):
-                    self.Arm2 = 270
-                elif(self.Arm2 < 30):
-                    self.Arm2 = 30
+            if (Arm2 > 15 and Arm2 < 40):
+                self.Arm2 += STEP_DEGREE*0.25
+            elif(Arm2 >=40 and Arm2 < 80):
+                self.Arm2 += STEP_DEGREE*0.5
+            elif(Arm2 >= 70):
+                self.Arm2 += STEP_DEGREE
+            elif (Arm2 < -15 and Arm2 > -40):
+                self.Arm2 -= STEP_DEGREE*0.25
+            elif(Arm2 <= -40 and Arm2 > -80):
+                self.Arm2 -= STEP_DEGREE*0.5
+            elif(Arm2 <= -80):
+                self.Arm2 -= STEP_DEGREE
+            if(self.Arm2 > 270):
+                self.Arm2 = 270
+            elif(self.Arm2 < 30):
+                self.Arm2 = 30
 
-                if (RotateGripper > 15 and RotateGripper < 40):
-                    self.RotateGripper += STEP_DEGREE*0.25
-                elif(RotateGripper >=40 and RotateGripper < 80):
-                    self.RotateGripper += STEP_DEGREE*0.5
-                elif(RotateGripper >= 70):
-                    self.RotateGripper += STEP_DEGREE
-                elif (RotateGripper < -15 and RotateGripper > -40):
-                    self.RotateGripper -= STEP_DEGREE*0.25
-                elif(RotateGripper <= -40 and RotateGripper > -80):
-                    self.RotateGripper -= STEP_DEGREE*0.5
-                elif(RotateGripper <= -80):
-                    self.RotateGripper -= STEP_DEGREE
-                if(self.RotateGripper > 180):
-                    self.RotateGripper = 180
-                elif(self.RotateGripper < 0):
-                    self.RotateGripper = 0
+            if (RotateGripper > 15 and RotateGripper < 40):
+                self.RotateGripper += STEP_DEGREE*0.25
+            elif(RotateGripper >=40 and RotateGripper < 80):
+                self.RotateGripper += STEP_DEGREE*0.5
+            elif(RotateGripper >= 70):
+                self.RotateGripper += STEP_DEGREE
+            elif (RotateGripper < -15 and RotateGripper > -40):
+                self.RotateGripper -= STEP_DEGREE*0.25
+            elif(RotateGripper <= -40 and RotateGripper > -80):
+                self.RotateGripper -= STEP_DEGREE*0.5
+            elif(RotateGripper <= -80):
+                self.RotateGripper -= STEP_DEGREE
+            if(self.RotateGripper > 180):
+                self.RotateGripper = 180
+            elif(self.RotateGripper < 0):
+                self.RotateGripper = 0
                     
 
-                if(openGrip > -50 and openGrip < 0):
-                    self.Gripper -= STEP_DEGREE*0.25
-                elif(openGrip >= 0 and openGrip < 30):
-                    self.Gripper -= STEP_DEGREE*0.5
-                elif(openGrip >= 30):
-                    self.Gripper -= STEP_DEGREE
+            if(openGrip > -50 and openGrip < 0):
+                self.Gripper -= STEP_DEGREE*0.25
+            elif(openGrip >= 0 and openGrip < 30):
+                self.Gripper -= STEP_DEGREE*0.5
+            elif(openGrip >= 30):
+                self.Gripper -= STEP_DEGREE
 
-                if(closeGrip > -50 and closeGrip < 0):
-                    self.Gripper += STEP_DEGREE*0.25
-                elif(closeGrip >= 0 and closeGrip < 30):
-                    self.Gripper += STEP_DEGREE*0.5
-                elif(closeGrip >= 30):
-                    self.Gripper += STEP_DEGREE
+            if(closeGrip > -50 and closeGrip < 0):
+                self.Gripper += STEP_DEGREE*0.25
+            elif(closeGrip >= 0 and closeGrip < 30):
+                self.Gripper += STEP_DEGREE*0.5
+            elif(closeGrip >= 30):
+                self.Gripper += STEP_DEGREE
 
-                if(self.Gripper > 155):
-                    self.Gripper = 155
-                elif(self.Gripper < 30):
-                    self.Gripper = 30
+            if(self.Gripper > 155):
+                self.Gripper = 155
+            elif(self.Gripper < 30):
+                self.Gripper = 30
                     
-                if(x != 0 and y != 0): # Если нажаты обе оси
-                    leftSpeed = x*y*SPEED
-                    rightSpeed = -x*y*SPEED
-                elif(x == 0): # Если мы не поворачиваем
-                    leftSpeed = y*SPEED
-                    rightSpeed = y*SPEED
-                elif(y == 0): # Если поворачиваем
-                    leftSpeed = -x*SPEED
-                    rightSpeed = x*SPEED
-                else: 
-                    leftSpeed = 0
-                    rightSpeed = 0
+            if(x != 0 and y != 0): # Если нажаты обе оси
+                leftSpeed = x*y*SPEED
+                rightSpeed = -x*y*SPEED
+            elif(x == 0): # Если мы не поворачиваем
+                leftSpeed = y*SPEED
+                rightSpeed = y*SPEED
+            elif(y == 0): # Если поворачиваем
+                leftSpeed = -x*SPEED
+                rightSpeed = x*SPEED
+            else:
+                leftSpeed = 0
+                rightSpeed = 0
 
-                try:    
-                    self.client.setSpeed(leftSpeed,rightSpeed)
-                    self.client.rotateArmSet(int(self.RotateArm - 0.5))
-                    self.client.Arm1Set(int(self.Arm1 - 0.5))
-                    self.client.Arm2Set(int(self.Arm2 - 0.5))
-                    self.client.rotateGripperSet(int(self.RotateGripper - 0.5))
-                    self.client.gripperSet(int(self.Gripper - 0.5))
+            data = dict()
+            data.update({'leftSpeed' : leftSpeed})
+            data.update({'rightSpeed' : rightSpeed})
+            data.update({'sensivity' : SENSIVITY})
+            data.update({'auto' : AUTO})
+            data.update({'rotateArm' : self.RotateArm})
+            data.update({'Arm1' : self.Arm1})
+            data.update({'Arm2' : self.Arm2})
+            data.update({'rotateGripper' : self.RotateGripper})
+            data.update({'gripper' : self.Gripper})
+            #data.update({'camera' : self.camPos})
+
+            data = pickle.dumps(data)
+            self.sock.sendto(data, (IP, 7000))
                     
-                except:
-                    try:
-                        self.client.setSpeed(leftSpeed,rightSpeed)
-                        self.client.rotateArmSet(int(self.RotateArm - 0.5))
-                        self.client.Arm1Set(int(self.Arm1 - 0.5))
-                        self.client.Arm2Set(int(self.Arm2 - 0.5))
-                        self.client.rotateGripperSet(int(self.RotateGripper - 0.5))
-                        self.client.gripperSet(int(self.Gripper - 0.5))                        
-                    except:
-                        try:
-                            self.client.setSpeed(leftSpeed,rightSpeed)
-                            self.client.rotateArmSet(int(self.RotateArm - 0.5))
-                            self.client.Arm1Set(int(self.Arm1 - 0.5))
-                            self.client.Arm2Set(int(self.Arm2 - 0.5))
-                            self.client.rotateGripperSet(int(self.RotateGripper - 0.5))
-                            self.client.gripperSet(int(self.Gripper - 0.5))                
-                        except:
-                            pass
-                time.sleep(0.1)
+            time.sleep(0.1)
         
-            except:
-                pass
+
+
+        data = dict()
+        data.update({'leftSpeed' : 0})
+        data.update({'rightSpeed' : 0})
+        data.update({'auto' : False})
+        data = pickle.dumps(data)
+
+        self.sock.sendto(data, (IP, 7000))
 
     def auto(self):
-        try:
-            self.client.setSpeed(0, 0)
-            self.client.auto()
-        except:
-            pass
+        global AUTO
+        AUTO = not AUTO
             
     def incSensivity(self):
-        try:
-            self.client.incSensivity()
-        except:
-            pass
+        global SENSIVITY
+        SENSIVITY += 1
 
     def decSensivity(self):
-        try:
-            self.client.decSensivity()
-        except:
-            pass
+        global SENSIVITY
+        SENSIVITY -= 1
 
     def speedDown(self):
         global SPEED    
         SPEED -= 10
 
     def camUp(self):    
-        try:
-            self.camPos += CAM_STEP
-            self.client.cameraSet(self.camPos)
-            if(self.camPos > 160):
-                self.camPos = 160
-        except:
-            self.camPos -= CAM_STEP
-            try:
-                self.camPos += CAM_STEP
-                self.client.cameraSet(self.camPos)
-                if(self.camPos > 160):
-                    self.camPos = 160
-            except:
-                self.camPos -= CAM_STEP
-                try:
-                    self.camPos += CAM_STEP
-                    self.client.cameraSet(self.camPos)
-                    if(self.camPos > 160):
-                        self.camPos = 160
-                except:
-                    self.camPos -= CAM_STEP
-                    pass
+        self.camPos += CAM_STEP
+        if(self.camPos > 160):
+            self.camPos = 160
 
     def camDown(self):
-        try:
-            self.camPos -= CAM_STEP
-            self.client.cameraSet(self.camPos)
-            if(self.camPos < 106):
-                self.camPos = 106
-        except:
-            self.camPos += CAM_STEP
-            try:
-                self.camPos -= CAM_STEP
-                self.client.cameraSet(self.camPos)
-                if(self.camPos < 106):
-                    self.camPos = 106
-            except:
-                self.camPos += CAM_STEP
-                try:
-                    self.camPos -= CAM_STEP
-                    self.client.cameraSet(self.camPos)
-                    if(self.camPos < 106):
-                        self.camPos = 106
-                except:
-                    self.camPos += CAM_STEP
-                    pass
+        self.camPos -= CAM_STEP
+        if(self.camPos < 106):
+            self.camPos = 106
 
     def speedUp(self):
         global SPEED        
         SPEED += 10
 
     def armDefault(self):
-        try:
-            self.client.defaultArmPos()
-            self.RotateArm = 65
-            self.Arm1 = 40
-            self.Arm2 = 230
-            self.RotateGripper = 90
-        except:
-            try:
-                self.client.defaultArmPos()
-                self.RotateArm = 65
-                self.Arm1 = 40
-                self.Arm2 = 230
-                self.RotateGripper = 90
-            except:
-                try:
-                    self.client.defaultArmPos()
-                    self.RotateArm = 65
-                    self.Arm1 = 40
-                    self.Arm2 = 230
-                    self.RotateGripper = 90
-                except:
-                    pass
+        self.RotateArm = 60
+        self.Arm1 = 40
+        self.Arm2 = 230
+        self.RotateGripper = 90
         
-    def stop(self):
-        self._stopping = True
-       
-class Onliner(threading.Thread):
-    def __init__(self, client):
-        threading.Thread.__init__(self)
-        self.client = client
-        self._stopping = False
-        
-    def run(self):
-        time.sleep(0.05)
-        while not self._stopping:
-            try:
-                self.client.getOnline()
-                self.client.unLock()
-                time.sleep(2)
-            except:
-                pass
-
     def stop(self):
         self._stopping = True
 
@@ -365,7 +287,8 @@ def cvShow(frame):
         pass
     return 0
 
-client = xmlrpc.client.ServerProxy("http://%s:%d" % (IP, PORT))
+sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+
 server = SimpleXMLRPCServer((_IP, PORT),logRequests = False)#создаём сервер
 print("Listening on port %d..." % PORT)
 
@@ -374,11 +297,8 @@ server.register_function(cvShow, "cvShow")#регистрируем функци
 recv = receiver.StreamReceiver(receiver.FORMAT_MJPEG, (IP, 5000))
 recv.play_pipeline()
 
-Joy = threadingJoy(client)
+Joy = threadingJoy(sock)
 Joy.start()
-
-O = Onliner(client)
-O.start()
 
 cvHandler = cvImageShow()
 cvHandler.start()
@@ -396,9 +316,7 @@ while not _stopping:
         print("Ctrl+C pressed")
         _stopping = True
         
-client.setSpeed(0, 0)
 recv.stop_pipeline()
 recv.null_pipeline()
-O.stop()
 Joy.stop()
 cvHandler.stop()
