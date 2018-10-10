@@ -24,6 +24,7 @@ CAM_STEP = 3
 
 AUTO = False
 SENSIVITY = 102
+CAMERA_AUTO_POS = 160
 
 #потоковые классы
 class threadingJoy(threading.Thread):#класс джойстика
@@ -31,7 +32,7 @@ class threadingJoy(threading.Thread):#класс джойстика
         threading.Thread.__init__(self)
         self.J = RTCJoystick.Joystick()#джойстик
         
-        self.camPos = 120
+        self.camPos = 13
         
         self.RotateArm = 60
         self.Arm1 = 40
@@ -69,7 +70,7 @@ class threadingJoy(threading.Thread):#класс джойстика
         global SPEED
         global STEP_DEGREE
         global SENSIVITY
-        global AUTO
+        global AUTO, CAMERA_AUTO_POS
         global IP
         time.sleep(0.5)
         while not self._stopping:
@@ -194,7 +195,10 @@ class threadingJoy(threading.Thread):#класс джойстика
             data.update({'Arm2' : self.Arm2})
             data.update({'rotateGripper' : self.RotateGripper})
             data.update({'gripper' : self.Gripper})
-            #data.update({'camera' : self.camPos})
+            if(AUTO):
+                data.update({'camera' : CAMERA_AUTO_POS})
+            else:
+                data.update({'camera' : self.camPos})
 
             data = pickle.dumps(data)
             self.sock.sendto(data, (IP, 7000))

@@ -39,9 +39,6 @@ CONTROL_IP = "192.168.42.100"#ip для трансляции пока вручн
 RTP_PORT = 5000 #порт отправки RTP видео
 SENSIVITY = 102
 
-CAMERA_DEFAULT_POS = 130
-CAMERA_AUTO_POS = 160
-
 Auto = False#состояние автономки
 Led = False
 
@@ -284,8 +281,6 @@ class receiver(threading.Thread):
                     ch = self.channels.get(key)
                     ch.SetValue(data.get(key))
             Auto = data.get('auto')
-            if(Auto):
-                self.channels.get('camera').SetValue(CAMERA_AUTO_POS)
                 
             SENSIVITY = data.get('sensivity')
             leftSpeed = data.get('leftSpeed')
