@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
 import RPiPWM
-from xmlrpc.server import SimpleXMLRPCServer
-import xmlrpc.client
 import time
 import os
 import colorama
@@ -201,19 +199,38 @@ class onWorking(threading.Thread):
 #################################################################
 
 class cvFramesSender(threading.Thread):
-    def __init__(self, client):
+    def __init__(self, sock):
         threading.Thread.__init__(self)
         self.free = True#свободность потока
-        self.client = client#клиент
+        self.sock = sock#клиент
         self.queue = Queue()#очередь
+        self.maxSize = 65497
         self._stopping = False
         
     def run(self):
+
+        global CONTROL_IP
         while not self._stopping:
             frame = self.queue.get()#ждём добавления кадра и получаем из очереди картинку
             try:
-                self.client.cvShow(frame.tobytes())#отправляем кадр
-                self.queue.task_done()#задача завершена
+                res, frame = cv2.imencode('.jpg', frame)
+                if res:
+                    
+                    data = frame.tobytes()
+                    data_size = len(data)
+                    if(data_size % MAX_SIZE == 0):
+                        attempts = data_size // MAX_SIZE
+                    else:
+                        attempts = data_size // MAX_SIZE
+                        attempts += 1
+                    _attempts = pickle.dumps([attempts, data_size])
+                    sock.sendto(_attempts, (CONTROL_IP, 7000))
+                    for i in range(attempts):
+                        _data = data[0:MAX_SIZE]
+                        data = data[MAX_SIZE : len(data)]
+                        
+                    self.sock.sendto(_data, (CONTROL_IP, 7000))
+                    self.queue.task_done()#задача завершена
             except Exception as err:
                 print('Fault code:', err.faultCode)
                 print('Message   :', err.faultString)
@@ -272,7 +289,6 @@ class receiver(threading.Thread):
     def run(self):
         global SPEED, Auto, SENSIVITY, CAMERA_AUTO_POS, CAMERA_AUTO_POS, IP
         while (not self._stopping):
-            print('wait data...')
             data, addr = self.sock.recvfrom(16384)
             data = pickle.loads(data)
             for i in range(len(self.channelKeys)):
@@ -370,14 +386,13 @@ print("Listening on port 7000...")
 work = onWorking()
 work.start()
 
-
-client = xmlrpc.client.ServerProxy("http://%s:%d" % (CONTROL_IP, PORT))
+sock =socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
 #проверка наличия камеры в системе  
 assert rpicam.checkCamera(), 'Raspberry Pi camera not found'
 print('Raspberry Pi camera found')
 
-debugCvSender = cvFramesSender(client)
+debugCvSender = cvFramesSender(sock)
 debugCvSender.start()
 
 print('OpenCV version: %s' % cv2.__version__)

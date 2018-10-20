@@ -4,8 +4,6 @@
 import RTCJoystick
 import receiver
 import threading
-from xmlrpc.server import SimpleXMLRPCServer
-import xmlrpc.client
 import socket
 import pickle
 import time
@@ -17,7 +15,7 @@ from queue import Queue
 #объявляем константы
 IP = '192.168.42.220'#IP робота
 _IP = str(os.popen('hostname -I | cut -d\' \' -f1').readline().replace('\n','')) #получаем IP, удаляем \n
-PORT = 8000#портсервера xmlrpc
+PORT = 7000#портсервера xmlrpc
 SPEED = 80#скорость
 STEP_DEGREE = 5
 CAM_STEP = 3
@@ -279,6 +277,7 @@ class cvImageShow(threading.Thread):
     def add(self, frame):
         res = False
         if self.queue.empty():
+            
             self.queue.put(frame)
             res = True
         return res
@@ -286,17 +285,11 @@ class cvImageShow(threading.Thread):
     def stop(self):
         self._stopping = True
 
-def cvShow(frame):
-    if cvHandler.add(frame.data):
-        pass
-    return 0
-
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
-server = SimpleXMLRPCServer((_IP, PORT),logRequests = False)#создаём сервер
+server = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+server.bind((_IP, PORT))
 print("Listening on port %d..." % PORT)
-
-server.register_function(cvShow, "cvShow")#регистрируем функции
 
 recv = receiver.StreamReceiver(receiver.FORMAT_MJPEG, (IP, 5000))
 recv.play_pipeline()
@@ -314,8 +307,25 @@ _stopping = False
 
 while not _stopping:
     try:
-        pass
-        time.sleep(0.1)
+        attempts, addr = sock.recvfrom(32768)
+        data = pickle.loads(attempts)
+        attempts = data[0]
+        data_size = data[1]
+        data = b''
+        for i in range(attempts):
+            _data, addr = sock.recvfrom(65550)
+            print(len(_data))
+            data += _data
+
+        if(len(data) == data_size):
+            print('Byte summ correct')
+        else:
+            print('Lost Data')
+            
+
+        if(data is not None):
+            cvHandler.add(data)
+        
     except KeyboardInterrupt:
         print("Ctrl+C pressed")
         _stopping = True
