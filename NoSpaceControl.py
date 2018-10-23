@@ -252,53 +252,20 @@ class threadingJoy(threading.Thread):#класс джойстика
     def stop(self):
         self._stopping = True
 
-class cvImageShow(threading.Thread):
-    def __init__(self):
-        threading.Thread.__init__(self)
-        self.queue = Queue()
-        self._frameCount = 0 #счетчик кадров
-        self._stopping = False
-        cv2.startWindowThread() #инициализация вывода cv2
-        
-    def run(self):
-        while not self._stopping:
-            frame = self.queue.get()
-            imgArray = np.frombuffer(frame, dtype=np.uint8) #преобразуем в массив np
-            img = cv2.imdecode(imgArray, cv2.IMREAD_COLOR) #декодируем
-            cv2.imshow('frame', img)
-            if cv2.waitKey(1) == 32: #нажали 'пробел', сохранили кадр
-                imgFileName = "frame-" + str(self._frameCount) + ".jpg"
-                print('Save frame: %s' % imgFileName)
-                cv2.imwrite(imgFileName, img) #записали кадр
-            self._frameCount += 1
-            self.queue.task_done() #сообщили очереди, что "задание выполнено"
-        cv2.destroyAllWindows()
-
-    def add(self, frame):
-        res = False
-        if self.queue.empty():
-            
-            self.queue.put(frame)
-            res = True
-        return res
-
-    def stop(self):
-        self._stopping = True
-
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
-server = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-server.bind((_IP, PORT))
-print("Listening on port %d..." % PORT)
+recvPiCam = receiver.StreamReceiver(receiver.FORMAT_MJPEG, (IP, 5000))
+recvPiCam.play_pipeline()
 
-recv = receiver.StreamReceiver(receiver.FORMAT_MJPEG, (IP, 5000))
-recv.play_pipeline()
+recvEndoskop = receiver.StreamReceiver(receiver.FORMAT_MJPEG, (IP, 6000))
+recvEndoskop.play_pipeline()
+
+recvAuro = receiver.StreamReceiver(receiver.FORMAT_MJPEG, (IP, 7000))
+recvAuto.play_pipeline()
 
 Joy = threadingJoy(sock)
 Joy.start()
 
-cvHandler = cvImageShow()
-cvHandler.start()
 
 t1 = threading.Thread(target = server.serve_forever)
 t1.start()
@@ -307,24 +274,7 @@ _stopping = False
 
 while not _stopping:
     try:
-        attempts, addr = sock.recvfrom(32768)
-        data = pickle.loads(attempts)
-        attempts = data[0]
-        data_size = data[1]
-        data = b''
-        for i in range(attempts):
-            _data, addr = sock.recvfrom(65550)
-            print(len(_data))
-            data += _data
-
-        if(len(data) == data_size):
-            print('Byte summ correct')
-        else:
-            print('Lost Data')
-            
-
-        if(data is not None):
-            cvHandler.add(data)
+        time.sleep(1)
         
     except KeyboardInterrupt:
         print("Ctrl+C pressed")

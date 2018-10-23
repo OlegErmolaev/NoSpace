@@ -11,6 +11,7 @@ import socket
 from PIL import Image       # библиотеки для рисования на дисплее
 from PIL import ImageDraw
 from PIL import ImageFont
+import pyzbar.pyzbar as pyzbar
 import rpicam
 from queue import Queue
 
@@ -36,6 +37,8 @@ PORT = 8000#порт сервера
 CONTROL_IP = "192.168.42.100"#ip для трансляции пока вручную
 RTP_PORT = 5000 #порт отправки RTP видео
 SENSIVITY = 102
+
+USE_LCD = False
 
 Auto = False#состояние автономки
 Led = False
@@ -136,22 +139,23 @@ class FrameHandler(threading.Thread):
 
 class onWorking(threading.Thread):
     def __init__(self):
+        global USE_LCD
         threading.Thread.__init__(self)
         print("Start measure CPU temp...")
         # создаем объект для работы с дисплеем (еще возможные варианты - 128_32 и 96_16 - размеры дисплеев в пикселях)
 
-        '''
-        self.disp = display
+        if(USE_LCD):
+            self.disp = display
+            
+            self.width = self.disp.width  # получаем высоту и ширину дисплея
+            self.height = self.disp.height
+            
+            self.image = Image.new('1', (self.width, self.height))     # создаем изображение из библиотеки PIL для вывода на экран
+            self.draw = ImageDraw.Draw(self.image)    # создаем объект, которым будем рисовать
+            self.top = -2    # сдвигаем текст вверх на 2 пикселя
+            self.x = 0   # сдвигаем весь текст к левому краю
+            self.font = ImageFont.load_default()     # загружаем стандартный шрифт
         
-        self.width = self.disp.width  # получаем высоту и ширину дисплея
-        self.height = self.disp.height
-        
-        self.image = Image.new('1', (self.width, self.height))     # создаем изображение из библиотеки PIL для вывода на экран
-        self.draw = ImageDraw.Draw(self.image)    # создаем объект, которым будем рисовать
-        self.top = -2    # сдвигаем текст вверх на 2 пикселя
-        self.x = 0   # сдвигаем весь текст к левому краю
-        self.font = ImageFont.load_default()     # загружаем стандартный шрифт
-        '''
 
         self._stopping = False
         
@@ -162,6 +166,7 @@ class onWorking(threading.Thread):
         global GREEN
         global YELLOW
         global DEFAULT
+        global USE_LCD
         while not self._stopping:
             temp = rpicam.getCPUtemperature()
             voltage = adc.GetVoltageFiltered()
@@ -180,16 +185,16 @@ class onWorking(threading.Thread):
 
             print ('CPU temp: %s Voltage: %s' % (tempS, voltageS))
 
-            '''
-            self.draw.rectangle((0, 0, self.width, self.height), outline=0, fill=0)  # прямоугольник, залитый черным - очищаем дисплей
-            self.draw.text((self.x, self.top), "Ip: "+str(IP), font=self.font, fill=255)        # формируем текст
-            self.draw.text((self.x, self.top + 8), "Battery: "+str("%.2f" % voltage)+ " V", font=self.font, fill=255)     # высота строки - 8 пикселей
-            self.draw.text((self.x, self.top + 16), "CPU temp: "+str("%.2f" % temp) + "°C", font=self.font, fill=255)
-            self.draw.text((self.x, self.top + 24), "CPU load: "+str("%.2f" % load)+"%", font=self.font, fill=255)
+            if(USE_LCD):
+                self.draw.rectangle((0, 0, self.width, self.height), outline=0, fill=0)  # прямоугольник, залитый черным - очищаем дисплей
+                self.draw.text((self.x, self.top), "Ip: "+str(IP), font=self.font, fill=255)        # формируем текст
+                self.draw.text((self.x, self.top + 8), "Battery: "+str("%.2f" % voltage)+ " V", font=self.font, fill=255)     # высота строки - 8 пикселей
+                self.draw.text((self.x, self.top + 16), "CPU temp: "+str("%.2f" % temp) + "°C", font=self.font, fill=255)
+                self.draw.text((self.x, self.top + 24), "CPU load: "+str("%.2f" % load)+"%", font=self.font, fill=255)
+                
+                self.disp.Image(self.image)   # записываем изображение в буффер
+                self.disp.Display()      # выводим его на экран
             
-            self.disp.Image(self.image)   # записываем изображение в буффер
-            self.disp.Display()      # выводим его на экран
-            '''
 
             time.sleep(2)  
 
@@ -200,11 +205,16 @@ class onWorking(threading.Thread):
 
 class cvFramesSender(threading.Thread):
     def __init__(self, sock):
+        global CONTROL_IP, WIDTH, HEIGHT, GREEN, DEFAULT
         threading.Thread.__init__(self)
         self.free = True#свободность потока
-        self.sock = sock#клиент
         self.queue = Queue()#очередь
-        self.maxSize = 65497
+        width = 4*int(WIDTH/6) - (2*int(WIDTH/6))
+        height = HEIGHT - 4*int(HEIGHT/5)
+        self.out = cv2.VideoWriter()
+        self.out.open("appsrc ! video/x-raw,format=BGR,framerate=15/1 ! videoconvert ! video/x-raw,format=I420 ! jpegenc ! rtpjpegpay ! udpsink host=" + str(CONTROL_IP) + " port=7000",0,15.0,(width,height))
+        if(self.out.isOpened):
+            print(GREEN + "Gstreamer debug auto stream ready" + DEFAULT)
         self._stopping = False
         
     def run(self):
@@ -213,24 +223,8 @@ class cvFramesSender(threading.Thread):
         while not self._stopping:
             frame = self.queue.get()#ждём добавления кадра и получаем из очереди картинку
             try:
-                res, frame = cv2.imencode('.jpg', frame)
-                if res:
-                    
-                    data = frame.tobytes()
-                    data_size = len(data)
-                    if(data_size % MAX_SIZE == 0):
-                        attempts = data_size // MAX_SIZE
-                    else:
-                        attempts = data_size // MAX_SIZE
-                        attempts += 1
-                    _attempts = pickle.dumps([attempts, data_size])
-                    sock.sendto(_attempts, (CONTROL_IP, 7000))
-                    for i in range(attempts):
-                        _data = data[0:MAX_SIZE]
-                        data = data[MAX_SIZE : len(data)]
-                        
-                    self.sock.sendto(_data, (CONTROL_IP, 7000))
-                    self.queue.task_done()#задача завершена
+                self.out.write(frame)
+                self.queue.task_done()#задача завершена
             except Exception as err:
                 print('Fault code:', err.faultCode)
                 print('Message   :', err.faultString)
@@ -246,6 +240,64 @@ class cvFramesSender(threading.Thread):
 
 #################################################################
 
+class qrCodeVideoSender(threading.Thread):
+    def __init__(self, device, logs = False):
+        global CONTROL_IP
+        threading.Thread.__init__(self)
+        self.cap = cv2.VideoCapture(device)
+        self.out = cv2.VideoWriter()
+        self.out.open("appsrc ! video/x-raw,format=BGR,framerate=15/1 ! videoconvert ! video/x-raw,format=I420 ! jpegenc ! rtpjpegpay ! udpsink host=" + str(CONTROL_IP) + " port=6000",0,15.0,(640,480))
+        if(self.out.isOpened):
+            print(GREEN + "Gstreamer endoskop pipeline started" + DEFAULT)
+        self.logs = logs
+        self._stopping = False
+
+    def run(self):
+        b,g,r,a = 0,0,255,255
+        while not self._stopping:
+            ret, frame = self.cap.read()
+            if ret:
+                decodedObjects = pyzbar.decode(frame)
+                if(decodedObjects != []):
+                    for obj in decodedObjects:
+                        data = obj.data.decode("UTF-8")
+                        
+                for decodedObject in decodedObjects: 
+                    points = decodedObject.polygon
+                 
+                    # If the points do not form a quad, find convex hull
+                    if len(points) > 4 : 
+                        hull = cv2.convexHull(np.array([point for point in points], dtype=np.float32))
+                        hull = list(map(tuple, np.squeeze(hull)))
+                    else: 
+                        hull = points;
+                     
+                    # Number of points in the convex hull
+                    n = len(hull)
+                 
+                    # Draw the convext hull
+                    for j in range(0,n):
+                        cv2.line(frame, hull[j], hull[ (j+1) % n], (255,0,0), 3)
+
+                    if(self.logs):
+                        print(data)
+                    fontpath = "s.ttf" 
+                    font = ImageFont.truetype(fontpath, 32)
+                    img_pil = Image.fromarray(frame)
+                    draw = ImageDraw.Draw(img_pil)
+                    if(len(data) > 34):
+                        draw.text((2, 10),  data[0:33], font = font, fill = (b, g, r, a))
+                        draw.text((2, 40),  data[34:len(data)], font = font, fill = (b, g, r, a))
+                    else:
+                        draw.text((2, 30),  data, font = font, fill = (b, g, r, a))
+                    frame = np.array(img_pil)
+                    
+                self.out.write(frame)
+
+    def stop(self):
+        self._stopping = True
+
+#################################################################
 class Onliner(threading.Thread):
     def __init__(self):
         threading.Thread.__init__(self)
@@ -254,7 +306,7 @@ class Onliner(threading.Thread):
         
     def run(self):
         while not self._stopping:
-            if(self._onlineFlag.wait(2)):
+            if(self._onlineFlag.wait(1)):
                 self._onlineFlag.clear()
                 print("Online")
                 time.sleep(1)
@@ -295,7 +347,8 @@ class receiver(threading.Thread):
                 key = self.channelKeys[i]
                 if(key in data):
                     ch = self.channels.get(key)
-                    ch.SetValue(data.get(key))
+                    if(ch.GetValue() != data.get(key)):
+                        ch.SetValue(data.get(key))
             Auto = data.get('auto')
                 
             SENSIVITY = data.get('sensivity')
@@ -386,14 +439,17 @@ print("Listening on port 7000...")
 work = onWorking()
 work.start()
 
-sock =socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+#sock =socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
 #проверка наличия камеры в системе  
 assert rpicam.checkCamera(), 'Raspberry Pi camera not found'
 print('Raspberry Pi camera found')
 
-debugCvSender = cvFramesSender(sock)
+debugCvSender = cvFramesSender()
 debugCvSender.start()
+
+qr = qrCodeVideoSender(0)
+qr.start()
 
 print('OpenCV version: %s' % cv2.__version__)
 
