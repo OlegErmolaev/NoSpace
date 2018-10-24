@@ -15,7 +15,6 @@ from queue import Queue
 #объявляем константы
 IP = '192.168.42.220'#IP робота
 _IP = str(os.popen('hostname -I | cut -d\' \' -f1').readline().replace('\n','')) #получаем IP, удаляем \n
-PORT = 7000#портсервера xmlrpc
 SPEED = 80#скорость
 STEP_DEGREE = 5
 CAM_STEP = 3
@@ -30,7 +29,7 @@ class threadingJoy(threading.Thread):#класс джойстика
         threading.Thread.__init__(self)
         self.J = RTCJoystick.Joystick()#джойстик
         
-        self.camPos = 13
+        self.camPos = 106
         
         self.RotateArm = 60
         self.Arm1 = 40
@@ -260,15 +259,11 @@ recvPiCam.play_pipeline()
 recvEndoskop = receiver.StreamReceiver(receiver.FORMAT_MJPEG, (IP, 6000))
 recvEndoskop.play_pipeline()
 
-recvAuro = receiver.StreamReceiver(receiver.FORMAT_MJPEG, (IP, 7000))
+recvAuto = receiver.StreamReceiver(receiver.FORMAT_MJPEG, (IP, 7000))
 recvAuto.play_pipeline()
 
 Joy = threadingJoy(sock)
 Joy.start()
-
-
-t1 = threading.Thread(target = server.serve_forever)
-t1.start()
 
 _stopping = False
 
@@ -280,7 +275,10 @@ while not _stopping:
         print("Ctrl+C pressed")
         _stopping = True
         
-recv.stop_pipeline()
-recv.null_pipeline()
+recvPiCam.stop_pipeline()
+recvPiCam.null_pipeline()
+recvEndoskop.stop_pipeline()
+recvEndoskop.null_pipeline()
+recvAuto.stop_pipeline()
+recvAuto.null_pipeline()
 Joy.stop()
-cvHandler.stop()

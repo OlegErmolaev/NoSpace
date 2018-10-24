@@ -204,7 +204,7 @@ class onWorking(threading.Thread):
 #################################################################
 
 class cvFramesSender(threading.Thread):
-    def __init__(self, sock):
+    def __init__(self):
         global CONTROL_IP, WIDTH, HEIGHT, GREEN, DEFAULT
         threading.Thread.__init__(self)
         self.free = True#свободность потока
@@ -385,7 +385,7 @@ def setSpeed(left,right, flag=False):
 
 colorama.init()
 
-print("Initi..." + DEFAULT)
+print(GREEN + "Initi..." + DEFAULT)
 leftMotor = RPiPWM.ReverseMotor(LEFT_CHANNEL)#инициализируем каналы
 rightMotor = RPiPWM.ReverseMotor(RIGHT_CHANNEL)
 #led = RPiPWM.Switch(4)
@@ -399,19 +399,19 @@ camera = RPiPWM.Servo180(10, extended = True)
 setSpeed(0,0)#инициализируем драйвера
 
 time.sleep(1)
-print("Succes!")
+print(GREEN + "Succes!" + DEFAULT)
 
 adc = RPiPWM.Battery(vRef=3.28)
 adc.start()     # запускаем измерения
 print("Adc started")
 
-'''
-disp = RPiPWM.SSD1306_128_32()
-disp.Begin()    # запускаем дисплей
-disp.Clear()    # очищаем буффер изображения
-disp.Display()  # выводим пустую картинку на дисплей
-print("Display working...")
-'''
+if(USE_LCD):
+    disp = RPiPWM.SSD1306_128_32()
+    disp.Begin()    # запускаем дисплей
+    disp.Clear()    # очищаем буффер изображения
+    disp.Display()  # выводим пустую картинку на дисплей
+    print("Display working...")
+
 
 print("Local IP is: %s" % IP)
 
@@ -432,14 +432,13 @@ server.addChannel("gripper", gripper)
 server.addChannel("camera", camera)
 
 server.start()
-print("Listening on port 7000...")
+print("Listening on port %d..." % PORT)
 
 
 
 work = onWorking()
 work.start()
 
-#sock =socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
 #проверка наличия камеры в системе  
 assert rpicam.checkCamera(), 'Raspberry Pi camera not found'
@@ -479,6 +478,7 @@ while not _stopping:
 frameHandler.stop()
 work.stop()
 debugCvSender.stop()
+qrCodeVideoSender.stop()
 adc.stop()
 O.stop()
 server.stop()
