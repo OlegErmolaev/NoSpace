@@ -16,7 +16,7 @@ from queue import Queue
 IP = '192.168.42.220'#IP робота
 _IP = str(os.popen('hostname -I | cut -d\' \' -f1').readline().replace('\n','')) #получаем IP, удаляем \n
 SPEED = 80#скорость
-STEP_DEGREE = 5
+STEP_DEGREE = 4
 CAM_STEP = 3
 
 AUTO = False
@@ -29,7 +29,7 @@ class threadingJoy(threading.Thread):#класс джойстика
         threading.Thread.__init__(self)
         self.J = RTCJoystick.Joystick()#джойстик
         
-        self.camPos = 106
+        self.camPos = 115
         
         self.RotateArm = 60
         self.Arm1 = 40

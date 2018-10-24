@@ -14,6 +14,8 @@ from PIL import ImageFont
 import pyzbar.pyzbar as pyzbar
 import rpicam
 from queue import Queue
+import cv_stream
+
 
 FORMAT = rpicam.FORMAT_MJPEG #поток H264
 WIDTH, HEIGHT = 320, 180
@@ -34,7 +36,7 @@ RIGHT_CORRECTION = -35
 
 IP = str(os.popen('hostname -I | cut -d\' \' -f1').readline().replace('\n',''))#получаем наш ip
 PORT = 8000#порт сервера
-CONTROL_IP = "192.168.42.100"#ip для трансляции пока вручную
+CONTROL_IP = "192.168.42.100"#ip для трансляции
 RTP_PORT = 5000 #порт отправки RTP видео
 SENSIVITY = 102
 
@@ -100,7 +102,7 @@ class FrameHandler(threading.Thread):
                         cv2.line(frame, (0,cy), (width,cy), (255,0,0), 1)
                  
                         cv2.drawContours(frame, contours, -1, (0,255,0), 1)#рисуем контур
-                        self.sender.addFrame(frame)
+                        self.sender.sendFrame(frame)
                             
                         speed  = 55
                         
@@ -168,8 +170,7 @@ class onWorking(threading.Thread):
         global DEFAULT
         global USE_LCD
         while not self._stopping:
-            temp = rpicam.getCPUtemperature()
-            voltage = adc.GetVoltageFiltered()
+            temp, voltage = self.getTempVoltage()
             
             if(temp > 80):
                 tempS = RED + str("%.2f" % temp) + "°C"+DEFAULT
@@ -197,58 +198,29 @@ class onWorking(threading.Thread):
             
 
             time.sleep(2)  
-
+    def getTempVoltage(self):
+        temp = rpicam.getCPUtemperature()
+        voltage = adc.GetVoltageFiltered()
+        res = [temp, voltage]
+        return res
+        
     def stop(self):
         self._stopping = True
         
-#################################################################
-
-class cvFramesSender(threading.Thread):
-    def __init__(self):
-        global CONTROL_IP, WIDTH, HEIGHT, GREEN, DEFAULT
-        threading.Thread.__init__(self)
-        self.free = True#свободность потока
-        self.queue = Queue()#очередь
-        width = 4*int(WIDTH/6) - (2*int(WIDTH/6))
-        height = HEIGHT - 4*int(HEIGHT/5)
-        self.out = cv2.VideoWriter()
-        self.out.open("appsrc ! video/x-raw,format=BGR,framerate=15/1 ! videoconvert ! video/x-raw,format=I420 ! jpegenc ! rtpjpegpay ! udpsink host=" + str(CONTROL_IP) + " port=7000",0,15.0,(width,height))
-        if(self.out.isOpened):
-            print(GREEN + "Gstreamer debug auto stream ready" + DEFAULT)
-        self._stopping = False
-        
-    def run(self):
-
-        global CONTROL_IP
-        while not self._stopping:
-            frame = self.queue.get()#ждём добавления кадра и получаем из очереди картинку
-            try:
-                self.out.write(frame)
-                self.queue.task_done()#задача завершена
-            except Exception as err:
-                print('Fault code:', err.faultCode)
-                print('Message   :', err.faultString)
-                
-    def addFrame(self, frame):
-        if self.queue.empty():#если в очереди пусто
-            res, imgJpg = cv2.imencode('.jpg', frame) #преобразовал картинку в массив
-            if res:
-                self.queue.put(imgJpg)#закидываем в очередь
-
-    def stop(self):
-        self._stopping = True
+        self.width = 4*int(WIDTH/6) - (2*int(WIDTH/6))
+        self.height = HEIGHT - 4*int(HEIGHT/5)
 
 #################################################################
 
 class qrCodeVideoSender(threading.Thread):
-    def __init__(self, device, logs = False):
+    def __init__(self, device, tempVoltageClass, stream, logs = False, width=320, height=180):
         global CONTROL_IP
         threading.Thread.__init__(self)
+        self.width = width
+        self.height = height
+        self.tempVoltageClass = tempVoltageClass
         self.cap = cv2.VideoCapture(device)
-        self.out = cv2.VideoWriter()
-        self.out.open("appsrc ! video/x-raw,format=BGR,framerate=15/1 ! videoconvert ! video/x-raw,format=I420 ! jpegenc ! rtpjpegpay ! udpsink host=" + str(CONTROL_IP) + " port=6000",0,15.0,(640,480))
-        if(self.out.isOpened):
-            print(GREEN + "Gstreamer endoskop pipeline started" + DEFAULT)
+        self.stream = stream
         self.logs = logs
         self._stopping = False
 
@@ -257,6 +229,9 @@ class qrCodeVideoSender(threading.Thread):
         while not self._stopping:
             ret, frame = self.cap.read()
             if ret:
+                fontpath = "s.ttf" 
+                font = ImageFont.truetype(fontpath, 32)
+                
                 decodedObjects = pyzbar.decode(frame)
                 if(decodedObjects != []):
                     for obj in decodedObjects:
@@ -281,18 +256,24 @@ class qrCodeVideoSender(threading.Thread):
 
                     if(self.logs):
                         print(data)
-                    fontpath = "s.ttf" 
-                    font = ImageFont.truetype(fontpath, 32)
                     img_pil = Image.fromarray(frame)
                     draw = ImageDraw.Draw(img_pil)
                     if(len(data) > 34):
+                        draw.polygon([0,10,0,90,635,90,635,10],(255,255,255,255),(0,0,0,0))
                         draw.text((2, 10),  data[0:33], font = font, fill = (b, g, r, a))
                         draw.text((2, 40),  data[34:len(data)], font = font, fill = (b, g, r, a))
                     else:
+                        draw.polygon([0,10,0,60,635,60,635,10],(255,255,255,255),(0,0,0,0))
                         draw.text((2, 30),  data, font = font, fill = (b, g, r, a))
                     frame = np.array(img_pil)
-                    
-                self.out.write(frame)
+                temp, voltage = self.tempVoltageClass.getTempVoltage()
+                img_pil = Image.fromarray(frame)
+                draw = ImageDraw.Draw(img_pil)
+                draw.polygon([2,435,2,480,635,480,635,435],(255,255,255,255),(0,0,0,0))
+                draw.text((4,435), str("Temperature: %.1f°C Voltage: %.1fV" % (temp,voltage)), font=font, fill = (b, g, r, a))
+                frame = np.array(img_pil)
+                frame = cv2.resize(frame, (self.width, self.height))
+                self.stream.sendFrame(frame)
 
     def stop(self):
         self._stopping = True
@@ -444,10 +425,13 @@ work.start()
 assert rpicam.checkCamera(), 'Raspberry Pi camera not found'
 print('Raspberry Pi camera found')
 
-debugCvSender = cvFramesSender()
+debugCvSender = cv_stream.OpenCVRTPStreamer(resolution = RESOLUTION, framerate = FRAMERATE, host = (CONTROL_IP, RTP_PORT+2000))
 debugCvSender.start()
 
-qr = qrCodeVideoSender(0)
+qrStreamer = cv_stream.OpenCVRTPStreamer(resolution = RESOLUTION, framerate = FRAMERATE, host = (CONTROL_IP, RTP_PORT+1000))
+qrStreamer.start()
+
+qr = qrCodeVideoSender(0, work, qrStreamer)
 qr.start()
 
 print('OpenCV version: %s' % cv2.__version__)
@@ -479,6 +463,7 @@ frameHandler.stop()
 work.stop()
 debugCvSender.stop()
 qrCodeVideoSender.stop()
+qrStreamer.stop()
 adc.stop()
 O.stop()
 server.stop()
