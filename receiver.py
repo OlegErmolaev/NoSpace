@@ -5,13 +5,13 @@ import gi
 gi.require_version('Gst','1.0')
 from gi.repository import Gst
 
-FORMAT_H264 = 0
-FORMAT_MJPEG = 1
+from common import *
 
 RTP_PORT = 5000
+HOST = '127.0.0.1'
 
 class StreamReceiver(object):
-    def __init__(self, video = FORMAT_H264, host = ('127.0.0.1', RTP_PORT)):
+    def __init__(self, video = VIDEO_H264, host = (HOST, RTP_PORT)):
         self._host = host
         #инициализация Gstreamer
         Gst.init(None)
@@ -32,9 +32,13 @@ class StreamReceiver(object):
 
         #rtpbin
         rtpbin = Gst.ElementFactory.make('rtpbin')
-        rtpbin.set_property('autoremove', True)
+        #rtpbin.set_property('autoremove', True)
+        rtpbin.set_property('latency', 200)        
         rtpbin.set_property('drop-on-latency', True) #отбрасывать устаревшие кадры
-        rtpbin.set_property('buffer-mode', 0)
+        rtpbin.set_property('buffer-mode', 4)
+        #rtpbin.set_property('ntp-time-source', 3)
+        #rtpbin.set_property('ntp-sync', True)
+        #rtpbin.set_property('rtcp-sync-send-time', False)
         
         #RTP Video
         formatStr = 'H264'
@@ -42,19 +46,21 @@ class StreamReceiver(object):
         if video:
             videoStr = 'JPEG'
             payloadType = 26
-        srcCaps = Gst.Caps.from_string('application/x-rtp, media=video,clock-rate=90000, encoding-name=%s, payload=%d' % (formatStr, payloadType))
+        srcCaps = Gst.Caps.from_string('application/x-rtp, media=video, clock-rate=90000, encoding-name=%s, payload=%d' % (formatStr, payloadType))
         
         udpsrc_rtpin = Gst.ElementFactory.make('udpsrc', 'udpsrc_rtpin')
         udpsrc_rtpin.set_property('port', host[1])
         udpsrc_rtpin.set_property('caps', srcCaps)
 
+        srcCaps = Gst.Caps.from_string('application/x-rtcp')
         udpsrc_rtcpin = Gst.ElementFactory.make('udpsrc', 'udpsrc_rtcpin')
         udpsrc_rtcpin.set_property('port', host[1] + 1)
+        udpsrc_rtcpin.set_property('caps', srcCaps)
 
         udpsink_rtcpout = Gst.ElementFactory.make('udpsink', 'udpsink_rtcpout')
         udpsink_rtcpout.set_property('host', host[0])
         udpsink_rtcpout.set_property('port', host[1] + 5)
-        udpsink_rtcpout.set_property('sync', False)
+        udpsink_rtcpout.set_property('sync', True)
         udpsink_rtcpout.set_property('async', False)
 
         depayName = 'rtph264depay'
@@ -73,7 +79,8 @@ class StreamReceiver(object):
         videorate = Gst.ElementFactory.make('videorate')
 
         #sink
-        sink = Gst.ElementFactory.make('autovideosink')
+        #sink = Gst.ElementFactory.make('autovideosink')
+        sink = Gst.ElementFactory.make('fpsdisplaysink')        
         sink.set_property('sync', False)
 
         # добавляем все элементы в pipeline
@@ -142,9 +149,13 @@ class StreamReceiver(object):
         #else:
         #    print('Message: %s' % str(t))
 
+    def getStatePipeline(self):
+        state = self.pipeline.get_state(Gst.CLOCK_TIME_NONE).state
+        print('GST pipeline', state)
 
     def play_pipeline(self):
         self.pipeline.set_state(Gst.State.PLAYING)
+        #self.getStatePipeline()
         print('GST pipeline PLAYING')
 
     def stop_pipeline(self):

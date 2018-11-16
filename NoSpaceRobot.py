@@ -16,12 +16,13 @@ import rpicam
 from queue import Queue
 import cv_stream
 
+DEVICE = 1
 
-FORMAT = rpicam.FORMAT_MJPEG #поток H264
-WIDTH, HEIGHT = 320, 180
-
-RESOLUTION = (WIDTH, HEIGHT)#разрешение
-FRAMERATE = 10#частота кадров
+WIDTH, HEIGHT = 320, 240
+RESOLUTION = (WIDTH, HEIGHT)
+FRAMERATE = 10
+FORMAT = rpicam.VIDEO_MJPEG
+#сетевые параметры
 
 RED = '\033[31;1m'
 YELLOW = '\033[33;1m'
@@ -32,7 +33,7 @@ LEFT_CHANNEL = 15#левый борт
 RIGHT_CHANNEL = 14#правый борт
 
 LEFT_CORRECTION = 0
-RIGHT_CORRECTION = -35
+RIGHT_CORRECTION = -40
 
 IP = str(os.popen('hostname -I | cut -d\' \' -f1').readline().replace('\n',''))#получаем наш ip
 PORT = 8000#порт сервера
@@ -102,6 +103,7 @@ class FrameHandler(threading.Thread):
                         cv2.line(frame, (0,cy), (width,cy), (255,0,0), 1)
                  
                         cv2.drawContours(frame, contours, -1, (0,255,0), 1)#рисуем контур
+                        frame = cv2.resize(frame, (WIDTH, HEIGHT))
                         self.sender.sendFrame(frame)
                             
                         speed  = 55
@@ -211,74 +213,7 @@ class onWorking(threading.Thread):
         self.height = HEIGHT - 4*int(HEIGHT/5)
 
 #################################################################
-
-class qrCodeVideoSender(threading.Thread):
-    def __init__(self, device, tempVoltageClass, stream, logs = False, width=320, height=180):
-        global CONTROL_IP
-        threading.Thread.__init__(self)
-        self.width = width
-        self.height = height
-        self.tempVoltageClass = tempVoltageClass
-        self.cap = cv2.VideoCapture(device)
-        self.stream = stream
-        self.logs = logs
-        self._stopping = False
-
-    def run(self):
-        b,g,r,a = 0,0,255,255
-        while not self._stopping:
-            ret, frame = self.cap.read()
-            if ret:
-                fontpath = "s.ttf" 
-                font = ImageFont.truetype(fontpath, 32)
-                
-                decodedObjects = pyzbar.decode(frame)
-                if(decodedObjects != []):
-                    for obj in decodedObjects:
-                        data = obj.data.decode("UTF-8")
-                        
-                for decodedObject in decodedObjects: 
-                    points = decodedObject.polygon
-                 
-                    # If the points do not form a quad, find convex hull
-                    if len(points) > 4 : 
-                        hull = cv2.convexHull(np.array([point for point in points], dtype=np.float32))
-                        hull = list(map(tuple, np.squeeze(hull)))
-                    else: 
-                        hull = points;
-                     
-                    # Number of points in the convex hull
-                    n = len(hull)
-                 
-                    # Draw the convext hull
-                    for j in range(0,n):
-                        cv2.line(frame, hull[j], hull[ (j+1) % n], (255,0,0), 3)
-
-                    if(self.logs):
-                        print(data)
-                    img_pil = Image.fromarray(frame)
-                    draw = ImageDraw.Draw(img_pil)
-                    if(len(data) > 34):
-                        draw.polygon([0,10,0,90,635,90,635,10],(255,255,255,255),(0,0,0,0))
-                        draw.text((2, 10),  data[0:33], font = font, fill = (b, g, r, a))
-                        draw.text((2, 40),  data[34:len(data)], font = font, fill = (b, g, r, a))
-                    else:
-                        draw.polygon([0,10,0,60,635,60,635,10],(255,255,255,255),(0,0,0,0))
-                        draw.text((2, 30),  data, font = font, fill = (b, g, r, a))
-                    frame = np.array(img_pil)
-                temp, voltage = self.tempVoltageClass.getTempVoltage()
-                img_pil = Image.fromarray(frame)
-                draw = ImageDraw.Draw(img_pil)
-                draw.polygon([2,435,2,480,635,480,635,435],(255,255,255,255),(0,0,0,0))
-                draw.text((4,435), str("Temperature: %.1f°C Voltage: %.1fV" % (temp,voltage)), font=font, fill = (b, g, r, a))
-                frame = np.array(img_pil)
-                frame = cv2.resize(frame, (self.width, self.height))
-                self.stream.sendFrame(frame)
-
-    def stop(self):
-        self._stopping = True
-
-#################################################################
+        
 class Onliner(threading.Thread):
     def __init__(self):
         threading.Thread.__init__(self)
@@ -364,6 +299,17 @@ def setSpeed(left,right, flag=False):
         leftMotor.SetValue(-left + LEFT_CORRECTION)
         rightMotor.SetValue(right + RIGHT_CORRECTION)
 
+def translit(text):
+    cyrillic = 'абвгдеёжзийклмнопрстуфхцчшщъыьэюя'
+ 
+    latin = 'a|b|v|g|d|e|e|zh|z|i|i|k|l|m|n|o|p|r|s|t|u|f|x|tc|4|LLI|shch||y||e|iu|ia'.split('|') # таблица транслитерации не самая новая
+    trantab = {k:v for k,v in zip(cyrillic,latin)}
+    newtext = ''
+    for ch in text:
+        casefunc =  str.capitalize if ch.isupper() else str.lower
+        newtext += casefunc(trantab.get(ch.lower(),ch))
+    return newtext
+
 colorama.init()
 
 print(GREEN + "Initi..." + DEFAULT)
@@ -372,9 +318,9 @@ rightMotor = RPiPWM.ReverseMotor(RIGHT_CHANNEL)
 #led = RPiPWM.Switch(4)
 rotateArm = RPiPWM.Servo120(7, extended = True)
 Arm1 = RPiPWM.Servo270(8, extended = True)
-Arm2 = RPiPWM.Servo270(0, extended = True)
+Arm2 = RPiPWM.Servo270(1, extended = True)
 rotateGripper = RPiPWM.Servo180(9, extended = True)
-gripper = RPiPWM.Servo180(1, extended = True)
+gripper = RPiPWM.Servo180(0, extended = True)
 camera = RPiPWM.Servo180(10, extended = True)
 
 setSpeed(0,0)#инициализируем драйвера
@@ -425,21 +371,23 @@ work.start()
 assert rpicam.checkCamera(), 'Raspberry Pi camera not found'
 print('Raspberry Pi camera found')
 
+#создаем трансляцию с камеры (тип потока h264/mjpeg, разрешение, частота кадров, хост куда шлем, функция обрабтчик кадров)
+rpiCamStreamer = rpicam.RPiCamStreamer(FORMAT, RESOLUTION, FRAMERATE, (CONTROL_IP, RTP_PORT), onFrameCallback)
+rpiCamStreamer.setRotation(180) #поворачиваем кадр на 180 град, доступные значения 90, 180, 270
+rpiCamStreamer.start() #запускаем трансляцию
+
 debugCvSender = cv_stream.OpenCVRTPStreamer(resolution = RESOLUTION, framerate = FRAMERATE, host = (CONTROL_IP, RTP_PORT+2000))
 debugCvSender.start()
 
-qrStreamer = cv_stream.OpenCVRTPStreamer(resolution = RESOLUTION, framerate = FRAMERATE, host = (CONTROL_IP, RTP_PORT+1000))
+qrStreamer = cv_stream.OpenCVRTPStreamer(resolution = RESOLUTION, framerate = FRAMERATE+5, host = (CONTROL_IP, RTP_PORT+1000))
 qrStreamer.start()
-
-qr = qrCodeVideoSender(0, work, qrStreamer)
-qr.start()
 
 print('OpenCV version: %s' % cv2.__version__)
 
-#создаем трансляцию с камеры (тип потока h264/mjpeg, разрешение, частота кадров, хост куда шлем, функция обрабтчик кадров)
-rpiCamStreamer = rpicam.RPiCamStreamer(FORMAT, RESOLUTION, FRAMERATE, (CONTROL_IP, RTP_PORT), onFrameCallback)
-rpiCamStreamer.setRotation(180)
-rpiCamStreamer.start() #запускаем трансляцию
+cap = cv2.VideoCapture(DEVICE)
+cap.set(3, WIDTH)
+cap.set(4, HEIGHT)
+font = cv2.FONT_HERSHEY_SIMPLEX
 
 #поток обработки кадров    
 frameHandler = FrameHandler(rpiCamStreamer, debugCvSender, setSpeed)
@@ -452,9 +400,49 @@ _stopping = False
 
 while not _stopping:
     try:
-        pass
-        time.sleep(0.1)
-    except KeyboardInterrupt:
+        ret, frame = cap.read()
+        if ret:
+            decodedObjects = pyzbar.decode(frame)
+            if(decodedObjects != []):
+                for obj in decodedObjects:
+                    data = obj.data.decode("UTF-8")
+                    
+            for decodedObject in decodedObjects: 
+                points = decodedObject.polygon
+             
+                # If the points do not form a quad, find convex hull
+                if len(points) > 4 : 
+                    hull = cv2.convexHull(np.array([point for point in points], dtype=np.float32))
+                    hull = list(map(tuple, np.squeeze(hull)))
+                else: 
+                    hull = points;
+                 
+                # Number of points in the convex hull
+                n = len(hull)
+                
+                # Draw the convext hull
+                for j in range(0,n):
+                    cv2.line(frame, hull[j], hull[ (j+1) % n], (255,0,0), 3)
+
+                print(data)
+
+                transData = translit(data)
+                frame = cv2.resize(frame,(640,480))
+                if(len(data) > 30):
+                    img = np.zeros([90,630,3],dtype=np.uint8)
+                    img.fill(255) # or img[:] = 255
+                    frame[10:100,5:635] = img
+                    cv2.putText(frame,transData[0:30],(4,45),font,1.2,(0,0,255),2)
+                    cv2.putText(frame,transData[31:len(transData)],(4,90),font,1.2,(0,0,255),2)
+                else:
+                    img = np.zeros([50,630,3],dtype=np.uint8)
+                    img.fill(255) # or img[:] = 255
+                    frame[10:60,5:635] = img
+                    cv2.putText(frame,transData,(4,45),font,1.2,(0,0,255),2)
+
+            frame = cv2.resize(frame, (WIDTH, HEIGHT))
+            qrStreamer.sendFrame(frame)
+    except (KeyboardInterrupt, SystemExit):
         print("Ctrl+C pressed")
         _stopping = True
 
@@ -462,7 +450,6 @@ while not _stopping:
 frameHandler.stop()
 work.stop()
 debugCvSender.stop()
-qrCodeVideoSender.stop()
 qrStreamer.stop()
 adc.stop()
 O.stop()

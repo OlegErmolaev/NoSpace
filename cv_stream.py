@@ -1,8 +1,7 @@
 import cv2
 import threading
 
-VIDEO_H264 = 0
-VIDEO_MJPEG = 1
+from common import *
 
 RED = '\033[31;1m'
 YELLOW = '\033[33;1m'
@@ -20,14 +19,14 @@ class OpenCVRTPStreamer(object):
         if video == VIDEO_H264:
             codecStr = 'x264enc tune=zerolatency bitrate=500 speed-preset=superfast ! rtph264pay'
             
-        self._pipeline = 'rtpbin name=rtpbin appsrc ! video/x-raw,format=BGR ! videoconvert ! video/x-raw,format=I420 ! %s ! queue ! rtpbin.send_rtp_sink_0 ' \
-            ' rtpbin.send_rtp_src_0 ! udpsink port=%d host=%s ' \
+        self._pipeline = 'rtpbin name=rtpbin latency=200 drop-on-latency=true buffer-mode=4 ntp-time-source=3 ntp-sync=true rtcp-sync-send-time=false ' \
+            ' appsrc ! video/x-raw,format=BGR ! videoconvert ! video/x-raw,format=I420 ! %s ! queue ! rtpbin.send_rtp_sink_0 ' \
+            ' rtpbin.send_rtp_src_0 ! udpsink port=%d host=%s sync=true async=false' \
             ' rtpbin.send_rtcp_src_0 ! udpsink port=%d host=%s sync=false async=false ' \
-            ' udpsrc port=%d ! rtpbin.recv_rtcp_sink_0' % (codecStr, host[1], host[0], host[1]+1, host[0], host[1]+5)
+            ' udpsrc port=%d caps="application/x-rtcp" ! rtpbin.recv_rtcp_sink_0' % (codecStr, host[1], host[0], host[1]+1, host[0], host[1]+5)
         self._streamer = cv2.VideoWriter()
 
     def start(self):
-        global GREEN, RED, DEFAULT
         if self._streamer.open(self._pipeline, cv2.CAP_GSTREAMER, 0, self._framerate, self._resolution, True):
             print(GREEN + 'RTP streamer started...' + DEFAULT)
             return True
@@ -36,8 +35,7 @@ class OpenCVRTPStreamer(object):
             return False
             
     def stop(self):
-        global GREEN, RED, DEFAULT
-        self._streamer.release()
+        #self._streamer.release()
         print(RED + 'RTP streamer stopped...' + DEFAULT)
         
     def sendFrame(self, frame):
@@ -55,10 +53,10 @@ class OpenCVRTPReciver(threading.Thread):
         if video == VIDEO_H264:
             decodeStr = 'rtph264depay ! avdec_h264'
             encodingName = 'H264'
-        self._pipeline = 'rtpbin name=rtpbin latency=250 drop-on-latency=true buffer-mode=0 ' \
+        self._pipeline = 'rtpbin name=rtpbin latency=200 drop-on-latency=true buffer-mode=4 ntp-time-source=3 ntp-sync=true ' \
             'udpsrc caps="application/x-rtp,media=(string)video,clock-rate=(int)90000,encoding-name=(string)%s" port=%d ! rtpbin.recv_rtp_sink_0 ' \
             'rtpbin. ! %s ! videoconvert ! video/x-raw, format=BGR ! appsink ' \
-            'udpsrc port=%d ! rtpbin.recv_rtcp_sink_0 ' \
+            'udpsrc caps="application/x-rtcp" port=%d ! rtpbin.recv_rtcp_sink_0 ' \
             'rtpbin.send_rtcp_src_0 ! udpsink port=%d host=%s sync=false async=false' % (encodingName, host[1], decodeStr, host[1]+1, host[1]+5, host[0])
         self._receiver = cv2.VideoCapture()
         self._stopped = threading.Event() #событие для остановки потока

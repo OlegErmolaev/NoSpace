@@ -1,6 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 import gi
 gi.require_version('Gst','1.0')
 from gi.repository import Gst
@@ -8,37 +5,15 @@ from gi.repository import Gst
 import picamera
 import numpy as np
 import sys
-import os
 import psutil
 import threading
 
-FORMAT_H264 = 0
-FORMAT_MJPEG = 1
+from common import *
 
 RTP_PORT = 5000
 
-# Возвращает температуру процессора
-def getCPUtemperature():
-    res = os.popen('vcgencmd measure_temp').readline()
-    return float(res.replace('temp=','').replace('\'C\n',''))
-
-# проверка доступности камеры, возвращает True, если камера доступна в системе
-def checkCamera():
-    res = os.popen('vcgencmd get_camera').readline().replace('\n','') #читаем результат, удаляем \n
-    dct = {}
-    for param in res.split(' '): #разбираем параметры
-        tmp = param.split('=')
-        dct.update({tmp[0]: int(tmp[1])}) #помещаем в словарь
-    return (dct['supported'] and dct['detected'])
-
-def getIP():
-    #cmd = 'hostname -I | cut -d\' \' -f1'
-    #ip = subprocess.check_output(cmd, shell = True) #получаем IP
-    res = os.popen('hostname -I | cut -d\' \' -f1').readline().replace('\n','') #получаем IP, удаляем \n
-    return res
-
 class AppSrcStreamer(object):
-    def __init__(self, video = FORMAT_H264, resolution = (640, 480), framerate = 30, host = ('localhost', RTP_PORT),
+    def __init__(self, video = VIDEO_MJPEG, resolution = (640, 480), framerate = 30, host = ('localhost', RTP_PORT),
                  onFrameCallback = None, useOMX = True, scale = 1):        
         self._host = host
         self._width = resolution[0]
@@ -67,29 +42,37 @@ class AppSrcStreamer(object):
         # Создание GStreamer pipeline
         self.pipeline = Gst.Pipeline()
         rtpbin = Gst.ElementFactory.make('rtpbin')
+        rtpbin.set_property('latency', 200)
         rtpbin.set_property('drop-on-latency', True) #отбрасывать устаревшие кадры
+        rtpbin.set_property('buffer-mode', 4)
+        rtpbin.set_property('ntp-time-source', 3) #источник времени clock-time
+        rtpbin.set_property('ntp-sync', True)
+        rtpbin.set_property('rtcp-sync-send-time', False) 
                 
         #настраиваем appsrc
         self.appsrc = Gst.ElementFactory.make('appsrc')
         self.appsrc.set_property('is-live', True)
-        videoStr = 'video/x-h264'
-        if video:
+        if video == VIDEO_H264:
+            videoStr = 'video/x-h264'
+        elif video == VIDEO_MJPEG:
             videoStr = 'image/jpeg'
+        elif video == VIDEO_RAW:
+            videoStr = 'video/x-raw,format=BGR'
         capstring = videoStr + ',width=' + str(width) \
             + ',height=' + str(height) + ',framerate=' \
             + str(framerate)+'/1'   
         srccaps = Gst.Caps.from_string(capstring)
         self.appsrc.set_property('caps', srccaps)
         #print('RPi camera GST caps: %s' % capstring)
-
-        if video == FORMAT_H264:
+            
+        if video == VIDEO_H264:
             parserName = 'h264parse'
         else:
             parserName = 'jpegparse'
             
         parser = Gst.ElementFactory.make(parserName)
         
-        if video == FORMAT_H264:
+        if video == VIDEO_H264:
             payloaderName = 'rtph264pay'
             #rtph264pay.set_property('config-interval', 10)
             #payloadType = 96
@@ -104,6 +87,8 @@ class AppSrcStreamer(object):
         udpsink_rtpout = Gst.ElementFactory.make('udpsink', 'udpsink_rtpout')
         udpsink_rtpout.set_property('host', host[0])
         udpsink_rtpout.set_property('port', host[1])
+        udpsink_rtpout.set_property('sync', True)
+        udpsink_rtpout.set_property('async', False)
 
         udpsink_rtcpout = Gst.ElementFactory.make('udpsink', 'udpsink_rtcpout')
         udpsink_rtcpout.set_property('host', host[0])
@@ -111,15 +96,18 @@ class AppSrcStreamer(object):
         udpsink_rtcpout.set_property('sync', False)
         udpsink_rtcpout.set_property('async', False)
 
+        srcCaps = Gst.Caps.from_string('application/x-rtcp')
         udpsrc_rtcpin = Gst.ElementFactory.make('udpsrc', 'udpsrc_rtcpin')
         udpsrc_rtcpin.set_property('port', host[1] + 5)
+        udpsrc_rtcpin.set_property('caps', srcCaps)
+        
 
         if not self._onFrameCallback is None:
             tee = Gst.ElementFactory.make('tee')
             rtpQueue = Gst.ElementFactory.make('queue', 'rtp_queue')
             frameQueue = Gst.ElementFactory.make('queue', 'frame_queue')
         
-            if video == FORMAT_H264: 
+            if video == VIDEO_H264: 
                 if useOMX:
                     decoderName = 'omxh264dec' #отлично работает загрузка ЦП 200%
                 else:
@@ -144,12 +132,12 @@ class AppSrcStreamer(object):
             ### создаем свой sink для перевода из GST в CV
             appsink = Gst.ElementFactory.make('appsink')
 
-            cvcaps = Gst.caps_from_string('video/x-raw, format=BGR') # формат принимаемых данных
-            appsink.set_property('caps', cvcaps)
-            appsink.set_property('sync', False)
+            cvCaps = Gst.caps_from_string('video/x-raw, format=BGR') # формат принимаемых данных
+            appsink.set_property('caps', cvCaps)
+            appsink.set_property('sync', True)
             #appsink.set_property('async', False)
             appsink.set_property('drop', True)
-            appsink.set_property('max-buffers', 1)
+            appsink.set_property('max-buffers', 5)
             appsink.set_property('emit-signals', True)
             appsink.connect('new-sample', self._newSample, appsink)
 
@@ -211,6 +199,7 @@ class AppSrcStreamer(object):
 
     def _newSample(self, sink, data):     # callback функция, вызываемая при каждом приходящем кадре
         if self._needFrame.is_set(): #если выставлен флаг нужен кадр
+            self._needFrame.clear() #сбрасываем флаг
             sample = sink.emit('pull-sample')
             sampleBuff = sample.get_buffer()
 
@@ -220,8 +209,7 @@ class AppSrcStreamer(object):
                 buffer = sampleBuff.extract_dup(0, sampleBuff.get_size()), dtype = np.uint8)
             
             self._onFrameCallback(cvFrame) #вызываем обработчик в качестве параметра передаем cv2 кадр
-                    
-            self._needFrame.clear() #сбрасываем флаг
+
         return Gst.FlowReturn.OK
             
     def _onMessage(self, bus, message):
@@ -261,19 +249,20 @@ class AppSrcStreamer(object):
 
     def write(self, s):
         gstBuff = Gst.Buffer.new_wrapped(s)
-        if not gstBuff is None:
+        if not (gstBuff is None):
             self.appsrc.emit('push-buffer', gstBuff)
 
     def flush(self):
         self.stop_pipeline()
 
-    def frameRequest(self): #выставляем флаг запрос кадра, возвращает True, если флаг выставлен
+    def frameRequest(self): #выставляем флаг запрос кадра, возвращает True, если запрос кадра удался
         if not self._needFrame.is_set():
             self._needFrame.set()
-        return self._needFrame.is_set()
+            return True
+        return False
 
 class RPiCamStreamer(object):
-    def __init__(self, video = FORMAT_H264, resolution = (640, 480), framerate = 30, host = ('localhost', RTP_PORT),
+    def __init__(self, video = VIDEO_MJPEG, resolution = (640, 480), framerate = 30, host = ('localhost', RTP_PORT),
                  onFrameCallback = None, scale = 1):
         self._videoFormat = 'h264'
         self._quality = 20

@@ -31,9 +31,9 @@ class threadingJoy(threading.Thread):#класс джойстика
         
         self.camPos = 115
         
-        self.RotateArm = 60
-        self.Arm1 = 40
-        self.Arm2 = 230
+        self.RotateArm = 55
+        self.Arm1 = 45
+        self.Arm2 = 221
         self.RotateGripper = 90
         self.Gripper = 120
 
@@ -253,13 +253,13 @@ class threadingJoy(threading.Thread):#класс джойстика
 
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
-recvPiCam = receiver.StreamReceiver(receiver.FORMAT_MJPEG, (IP, 5000))
+recvPiCam = receiver.StreamReceiver(receiver.VIDEO_MJPEG, (IP, 5000))
 recvPiCam.play_pipeline()
 
-recvEndoskop = receiver.StreamReceiver(receiver.FORMAT_MJPEG, (IP, 6000))
+recvEndoskop = receiver.StreamReceiver(receiver.VIDEO_MJPEG, (IP, 6000))
 recvEndoskop.play_pipeline()
 
-recvAuto = receiver.StreamReceiver(receiver.FORMAT_MJPEG, (IP, 7000))
+recvAuto = receiver.StreamReceiver(receiver.VIDEO_MJPEG, (IP, 7000))
 recvAuto.play_pipeline()
 
 Joy = threadingJoy(sock)
