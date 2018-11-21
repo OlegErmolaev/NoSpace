@@ -16,7 +16,7 @@ import rpicam
 from queue import Queue
 import cv_stream
 
-DEVICE = 1
+DEVICE = 0
 
 WIDTH, HEIGHT = 320, 240
 RESOLUTION = (WIDTH, HEIGHT)
@@ -40,6 +40,8 @@ PORT = 8000#порт сервера
 CONTROL_IP = "192.168.42.100"#ip для трансляции
 RTP_PORT = 5000 #порт отправки RTP видео
 SENSIVITY = 102
+
+SHOWTIME = 5
 
 USE_LCD = False
 
@@ -80,11 +82,11 @@ class FrameHandler(threading.Thread):
                 self.rpiCamStream.frameRequest() #отправил запрос на новый кадр
                 self._newFrameEvent.wait() #ждем появления нового кадра
                 if not (self._frame is None): #если кадр есть
-                    frame = self._frame[4*int(height/5):self.height, 2*int(width/6):4*int(width/6)]#обрезаем для оценки инверсности
+                    frame = self._frame[3*int(height/5):4*int(self.height/5), 2*int(width/6):4*int(width/6)]#обрезаем для оценки инверсности
                     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)#делаем ч/б
 
                     intensivity = int(gray.mean())#получаем среднее значение
-                    if(intensivity<135):#условие интесивности
+                    if(intensivity<110):#условие интесивности
                         ret,binary = cv2.threshold(gray,SENSIVITY,255,cv2.THRESH_BINARY)#если инверсная инвертируем картинку
                         print("Inverse")
                     else:
@@ -109,7 +111,7 @@ class FrameHandler(threading.Thread):
                         speed  = 55
                         
                         diff = cx/(self.frameWidth/2) - 1
-                        if(cy > 80):
+                        if(cy > 40):
                             diff *= 25
                             
                         leftSpeed = int(speed + diff * self.controlRate)
@@ -397,7 +399,8 @@ frameHandler.start() #запускаем обработку
 
 
 _stopping = False
-
+qrData = ''
+detectTime = 0
 while not _stopping:
     try:
         ret, frame = cap.read()
@@ -406,6 +409,11 @@ while not _stopping:
             if(decodedObjects != []):
                 for obj in decodedObjects:
                     data = obj.data.decode("UTF-8")
+                    if(data != qrData):
+                        qrData = data
+                        print(data)
+                        detectTime = time.time()
+                    
                     
             for decodedObject in decodedObjects: 
                 points = decodedObject.polygon
@@ -424,8 +432,7 @@ while not _stopping:
                 for j in range(0,n):
                     cv2.line(frame, hull[j], hull[ (j+1) % n], (255,0,0), 3)
 
-                print(data)
-
+            if(time.time()-detectTime < SHOWTIME and qrData !=''):
                 transData = translit(data)
                 frame = cv2.resize(frame,(640,480))
                 if(len(data) > 30):
@@ -439,6 +446,8 @@ while not _stopping:
                     img.fill(255) # or img[:] = 255
                     frame[10:60,5:635] = img
                     cv2.putText(frame,transData,(4,45),font,1.2,(0,0,255),2)
+            else:
+                qrData = ''
 
             frame = cv2.resize(frame, (WIDTH, HEIGHT))
             qrStreamer.sendFrame(frame)

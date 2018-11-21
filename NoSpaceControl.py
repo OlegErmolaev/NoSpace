@@ -243,9 +243,9 @@ class threadingJoy(threading.Thread):#класс джойстика
         SPEED += 10
 
     def armDefault(self):
-        self.RotateArm = 60
-        self.Arm1 = 40
-        self.Arm2 = 230
+        self.RotateArm = 55
+        self.Arm1 = 45
+        self.Arm2 = 221
         self.RotateGripper = 90
         
     def stop(self):
