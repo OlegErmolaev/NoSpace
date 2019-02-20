@@ -8,19 +8,17 @@ import socket
 import pickle
 import time
 import os
-import cv2
-import numpy as np
 from queue import Queue
 
 #объявляем константы
 IP = '192.168.42.220'#IP робота
 _IP = str(os.popen('hostname -I | cut -d\' \' -f1').readline().replace('\n','')) #получаем IP, удаляем \n
 SPEED = 80#скорость
-STEP_DEGREE = 4
+STEP_DEGREE = 3
 CAM_STEP = 3
 
 AUTO = False
-SENSIVITY = 102
+SENSIVITY = 90
 CAMERA_AUTO_POS = 160
 
 #потоковые классы
@@ -116,17 +114,17 @@ class threadingJoy(threading.Thread):#класс джойстика
                 self.Arm1 = 45
 
             if (Arm2 > 15 and Arm2 < 40):
-                self.Arm2 += STEP_DEGREE*0.25
-            elif(Arm2 >=40 and Arm2 < 80):
-                self.Arm2 += STEP_DEGREE*0.5
-            elif(Arm2 >= 70):
-                self.Arm2 += STEP_DEGREE
-            elif (Arm2 < -15 and Arm2 > -40):
                 self.Arm2 -= STEP_DEGREE*0.25
-            elif(Arm2 <= -40 and Arm2 > -80):
+            elif(Arm2 >=40 and Arm2 < 80):
                 self.Arm2 -= STEP_DEGREE*0.5
-            elif(Arm2 <= -80):
+            elif(Arm2 >= 70):
                 self.Arm2 -= STEP_DEGREE
+            elif (Arm2 < -15 and Arm2 > -40):
+                self.Arm2 += STEP_DEGREE*0.25
+            elif(Arm2 <= -40 and Arm2 > -80):
+                self.Arm2 += STEP_DEGREE*0.5
+            elif(Arm2 <= -80):
+                self.Arm2 += STEP_DEGREE
             if(self.Arm2 > 270):
                 self.Arm2 = 270
             elif(self.Arm2 < 30):
@@ -219,10 +217,12 @@ class threadingJoy(threading.Thread):#класс джойстика
     def incSensivity(self):
         global SENSIVITY
         SENSIVITY += 1
+        print(SENSIVITY)
 
     def decSensivity(self):
         global SENSIVITY
         SENSIVITY -= 1
+        print(SENSIVITY)
 
     def speedDown(self):
         global SPEED    
