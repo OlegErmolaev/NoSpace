@@ -42,7 +42,7 @@ IP = str(os.popen('hostname -I | cut -d\' \' -f1').readline().replace('\n',''))#
 PORT = 8000#порт сервера
 CONTROL_IP = "192.168.42.100"#ip для трансляции
 RTP_PORT = 5000 #порт отправки RTP видео
-SENSIVITY = 90
+SENSIVITY = 102
 
 SHOWTIME = 5
 
@@ -85,12 +85,11 @@ class FrameHandler(threading.Thread):
                 self.rpiCamStream.frameRequest() #отправил запрос на новый кадр
                 self._newFrameEvent.wait() #ждем появления нового кадра
                 if not (self._frame is None): #если кадр есть
-                    frame = self._frame[3*int(height/6):4*int(self.height/6), 2*int(width/6):4*int(width/6)]#обрезаем для оценки инверсности
+                    frame = self._frame[3*int(height/5):4*int(self.height/5), 2*int(width/6):4*int(width/6)]#обрезаем для оценки инверсности
                     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)#делаем ч/б
 
                     intensivity = int(gray.mean())#получаем среднее значение
-                    print(intensivity)
-                    if(intensivity<100):#условие интесивности
+                    if(intensivity<110):#условие интесивности
                         ret,binary = cv2.threshold(gray,SENSIVITY,255,cv2.THRESH_BINARY)#если инверсная инвертируем картинку
                         print("Inverse")
                     else:
@@ -115,16 +114,17 @@ class FrameHandler(threading.Thread):
                         speed  = 55
                         
                         diff = cx/(self.frameWidth/2) - 1
-                        if(cy > 20):
+                        if(cy > 40):
                             diff *= 25
                             
-                        leftSpeed = int(speed - diff * self.controlRate)
-                        rightSpeed = int(speed + diff * self.controlRate)
+                        leftSpeed = int(speed + diff * self.controlRate)
+                        rightSpeed = int(speed - diff * self.controlRate)
                         print('Left: %s Right: %s' % (leftSpeed, rightSpeed))
                         self.setSpeed(-leftSpeed, -rightSpeed, True)
                         
                     else:#если не нашли контур
                         print ("I don't see the line")
+                        self.setSpeed(0,0)
 
                 self._newFrameEvent.clear() #сбрасываем событие
                     
