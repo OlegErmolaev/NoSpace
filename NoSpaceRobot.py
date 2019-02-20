@@ -29,8 +29,11 @@ YELLOW = '\033[33;1m'
 GREEN = '\033[32;1m'
 DEFAULT = '\033[39;49m'
 
-LEFT_CHANNEL = 15#левый борт
-RIGHT_CHANNEL = 14#правый борт
+LEFT_FORWARD = 15#левый борт
+LEFT_BACKWARD = 14#левый борт
+RIGHT_FORWARD = 13#правый борт
+RIGHT_BACKWARD = 12
+
 
 LEFT_CORRECTION = 0
 RIGHT_CORRECTION = -40
@@ -298,8 +301,10 @@ def setSpeed(left,right, flag=False):
     global RIGHT_CORRECTION
     global Auto
     if not Auto or flag:
-        leftMotor.SetValue(-left + LEFT_CORRECTION)
-        rightMotor.SetValue(right + RIGHT_CORRECTION)
+        leftMotorForward.SetValue(-left)
+        leftMotorBackward.SetValue(-left)
+        rightMotorForward.SetValue(right)
+        rightMotorBackward.SetValue(right)
 
 def translit(text):
     cyrillic = 'абвгдеёжзийклмнопрстуфхцчшщъыьэюя'
@@ -315,8 +320,10 @@ def translit(text):
 colorama.init()
 
 print(GREEN + "Initi..." + DEFAULT)
-leftMotor = RPiPWM.ReverseMotor(LEFT_CHANNEL)#инициализируем каналы
-rightMotor = RPiPWM.ReverseMotor(RIGHT_CHANNEL)
+leftMotorForward = RPiPWM.ReverseMotor(LEFT_FORWARD)#инициализируем каналы
+leftMotorBackward = RPiPWM.ReverseMotor(LEFT_BACKWARD)
+rightMotorForward = RPiPWM.ReverseMotor(RIGHT_FORWARD)
+rightMotorBackward = RPiPWM.ReverseMotor(RIGHT_BACKWARD)
 #led = RPiPWM.Switch(4)
 rotateArm = RPiPWM.Servo120(7, extended = True)
 Arm1 = RPiPWM.Servo270(8, extended = True)
