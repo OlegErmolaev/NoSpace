@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 #импорт либ
 import RTCJoystick
+import AvrPyJoy
 import receiver
 import threading
 import socket
@@ -12,12 +13,14 @@ from queue import Queue
 
 #объявляем константы
 IP = '192.168.42.220'#IP робота
+#IP = '173.1.0.52'
 _IP = str(os.popen('hostname -I | cut -d\' \' -f1').readline().replace('\n','')) #получаем IP, удаляем \n
 SPEED = 80#скорость
 STEP_DEGREE = 3
 CAM_STEP = 3
 
 AUTO = False
+QR = False
 SENSIVITY = 90
 CAMERA_AUTO_POS = 160
 
@@ -29,10 +32,9 @@ class threadingJoy(threading.Thread):#класс джойстика
         
         self.camPos = 115
         
-        self.RotateArm = 55
-        self.Arm1 = 45
-        self.Arm2 = 221
-        self.RotateGripper = 90
+        self.RotateArm = 70
+        self.Arm1 = 50
+        self.Arm2 = 270
         self.Gripper = 120
 
         self.sock = sock
@@ -50,6 +52,13 @@ class threadingJoy(threading.Thread):#класс джойстика
             except:
                 print("Problem with joystick")
                 self._stopping = True
+
+    
+        self.aJ = AvrPyJoy.Joystic()#создаём объект Joystic
+        self.aJ.connect(2,timeout=10)#подключаем (req: path;manually: baudrate=9600, timeout=5)
+        self.aJ.start()#запускаем поток
+        print("Joystick initialized ttyUSB0")
+           
         if not self._stopping:
             self.J.connectButton('a', self.auto)
             self.J.connectButton('y', self.speedDown)
@@ -59,13 +68,14 @@ class threadingJoy(threading.Thread):#класс джойстика
             self.J.connectButton('start', self.camUp)
             self.J.connectButton('mode', self.armDefault)
             self.J.connectButton('tr', self.speedUp)
+            self.J.connectButton('tl', self.readQr)
 
 
     def run(self):
         global SPEED
         global STEP_DEGREE
         global SENSIVITY
-        global AUTO, CAMERA_AUTO_POS
+        global AUTO, CAMERA_AUTO_POS, QR
         global IP
         time.sleep(0.5)
         while not self._stopping:
@@ -75,9 +85,9 @@ class threadingJoy(threading.Thread):#класс джойстика
             rotateArm = int(self.J.Axis.get('x')*-100)
             Arm1 = int(self.J.Axis.get('y')*100)
             Arm2 = int(self.J.Axis.get('ry')*100)
-            RotateGripper = int(self.J.Axis.get('rx')*100)
-            openGrip = int(self.J.Axis.get('z')*100)
-            closeGrip = int(self.J.Axis.get('rz')*100)
+            #openGrip = int(self.J.Axis.get('z')*100)
+            #closeGrip = int(self.J.Axis.get('rz')*100)
+            grip = self.aJ.getAxis('x')
                     
             if (rotateArm > 15 and rotateArm < 40):
                 self.RotateArm += STEP_DEGREE*0.25
@@ -128,27 +138,9 @@ class threadingJoy(threading.Thread):#класс джойстика
             if(self.Arm2 > 270):
                 self.Arm2 = 270
             elif(self.Arm2 < 30):
-                self.Arm2 = 30
+                self.Arm2 = 30                    
 
-            if (RotateGripper > 15 and RotateGripper < 40):
-                self.RotateGripper += STEP_DEGREE*0.25
-            elif(RotateGripper >=40 and RotateGripper < 80):
-                self.RotateGripper += STEP_DEGREE*0.5
-            elif(RotateGripper >= 70):
-                self.RotateGripper += STEP_DEGREE
-            elif (RotateGripper < -15 and RotateGripper > -40):
-                self.RotateGripper -= STEP_DEGREE*0.25
-            elif(RotateGripper <= -40 and RotateGripper > -80):
-                self.RotateGripper -= STEP_DEGREE*0.5
-            elif(RotateGripper <= -80):
-                self.RotateGripper -= STEP_DEGREE
-            if(self.RotateGripper > 180):
-                self.RotateGripper = 180
-            elif(self.RotateGripper < 0):
-                self.RotateGripper = 0
-                    
-
-            if(openGrip > -50 and openGrip < 0):
+            '''if(openGrip > -50 and openGrip < 0):
                 self.Gripper -= STEP_DEGREE*0.25
             elif(openGrip >= 0 and openGrip < 30):
                 self.Gripper -= STEP_DEGREE*0.5
@@ -165,14 +157,16 @@ class threadingJoy(threading.Thread):#класс джойстика
             if(self.Gripper > 155):
                 self.Gripper = 155
             elif(self.Gripper < 30):
-                self.Gripper = 30
+                self.Gripper = 30'''
+
+            self.Gripper = self.valmap(grip, 0, 255, 30, 155)
                     
             if(x != 0 and y != 0): # Если нажаты обе оси
                 leftSpeed = x*y*SPEED
                 rightSpeed = -x*y*SPEED
             elif(x == 0): # Если мы не поворачиваем
-                leftSpeed = y*SPEED
-                rightSpeed = y*SPEED
+                leftSpeed = -y*SPEED
+                rightSpeed = -y*SPEED
             elif(y == 0): # Если поворачиваем
                 leftSpeed = -x*SPEED
                 rightSpeed = x*SPEED
@@ -185,11 +179,13 @@ class threadingJoy(threading.Thread):#класс джойстика
             data.update({'rightSpeed' : rightSpeed})
             data.update({'sensivity' : SENSIVITY})
             data.update({'auto' : AUTO})
+            data.update({'qr' : QR})
             data.update({'rotateArm' : self.RotateArm})
             data.update({'Arm1' : self.Arm1})
             data.update({'Arm2' : self.Arm2})
-            data.update({'rotateGripper' : self.RotateGripper})
             data.update({'gripper' : self.Gripper})
+            
+            if(QR):QR=False
             if(AUTO):
                 data.update({'camera' : CAMERA_AUTO_POS})
             else:
@@ -227,6 +223,7 @@ class threadingJoy(threading.Thread):#класс джойстика
     def speedDown(self):
         global SPEED    
         SPEED -= 10
+        print(SPEED)
 
     def camUp(self):    
         self.camPos += CAM_STEP
@@ -241,15 +238,25 @@ class threadingJoy(threading.Thread):#класс джойстика
     def speedUp(self):
         global SPEED        
         SPEED += 10
+        print(SPEED)
 
     def armDefault(self):
-        self.RotateArm = 55
-        self.Arm1 = 45
-        self.Arm2 = 221
-        self.RotateGripper = 90
+        self.RotateArm = 70
+        self.Arm1 = 50
+        self.Arm2 = 270
+        
+
+    def readQr(self):
+        global QR
+        QR = True
+
+    def valmap(self,value, istart, istop, ostart, ostop):
+        return ostart + (ostop - ostart) * ((value - istart) / (istop - istart))
         
     def stop(self):
         self._stopping = True
+
+        
 
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
