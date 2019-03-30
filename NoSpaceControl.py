@@ -5,6 +5,7 @@ import RTCJoystick
 import AvrPyJoy
 import receiver
 import threading
+from pynput.keyboard import  Listener
 import socket
 import pickle
 import time
@@ -21,7 +22,8 @@ CAM_STEP = 3
 
 AUTO = False
 QR = False
-SENSIVITY = 90
+SENSIVITY = 55
+INVERSE = 80
 CAMERA_AUTO_POS = 160
 
 #потоковые классы
@@ -32,9 +34,10 @@ class threadingJoy(threading.Thread):#класс джойстика
         
         self.camPos = 115
         
-        self.RotateArm = 70
-        self.Arm1 = 50
-        self.Arm2 = 270
+        self.RotateArm = 96
+        self.Arm1 = 30
+        self.Arm2 = 45
+        self.rotateGripper = 90
         self.Gripper = 120
 
         self.sock = sock
@@ -55,20 +58,34 @@ class threadingJoy(threading.Thread):#класс джойстика
 
     
         self.aJ = AvrPyJoy.Joystic()#создаём объект Joystic
-        self.aJ.connect(2,timeout=10)#подключаем (req: path;manually: baudrate=9600, timeout=5)
-        self.aJ.start()#запускаем поток
-        print("Joystick initialized ttyUSB0")
+        try:
+            self.aJ.connect(0,timeout=10)#подключаем (req: path;manually: baudrate=9600, timeout=5)
+            self.aJ.start()#запускаем поток
+            print("Joystick initialized ttyUSB0")
+        except:
+            try:
+                self.aJ.connect(1,timeout=10)#подключаем (req: path;manually: baudrate=9600, timeout=5)
+                self.aJ.start()#запускаем поток
+                print("Joystick initialized ttyUSB1")
+            except:
+                try:
+                    self.aJ.connect(2,timeout=10)#подключаем (req: path;manually: baudrate=9600, timeout=5)
+                    self.aJ.start()#запускаем поток
+                    print("Joystick initialized ttyUSB2")
+                except:
+                    print('problem with joystick')
+                    self._stopping = True
+                    
+            
            
         if not self._stopping:
             self.J.connectButton('a', self.auto)
             self.J.connectButton('y', self.speedDown)
-            self.J.connectButton('x', self.decSensivity)
-            self.J.connectButton('b', self.incSensivity)
             self.J.connectButton('select', self.camDown)
             self.J.connectButton('start', self.camUp)
             self.J.connectButton('mode', self.armDefault)
             self.J.connectButton('tr', self.speedUp)
-            self.J.connectButton('tl', self.readQr)
+            self.J.connectButton('x', self.readQr)
 
 
     def run(self):
@@ -85,9 +102,10 @@ class threadingJoy(threading.Thread):#класс джойстика
             rotateArm = int(self.J.Axis.get('x')*-100)
             Arm1 = int(self.J.Axis.get('y')*100)
             Arm2 = int(self.J.Axis.get('ry')*100)
-            #openGrip = int(self.J.Axis.get('z')*100)
-            #closeGrip = int(self.J.Axis.get('rz')*100)
-            grip = self.aJ.getAxis('x')
+            openGrip = int(self.J.Axis.get('z')*100)
+            closeGrip = int(self.J.Axis.get('rz')*100)
+            rotateGripper = self.aJ.getAxis('x')
+            #grip = self.aJ.getAxis('x')
                     
             if (rotateArm > 15 and rotateArm < 40):
                 self.RotateArm += STEP_DEGREE*0.25
@@ -101,10 +119,10 @@ class threadingJoy(threading.Thread):#класс джойстика
                 self.RotateArm -= STEP_DEGREE*0.5
             elif(rotateArm <= -80):
                 self.RotateArm -= STEP_DEGREE
-            if(self.RotateArm > 120):
-                self.RotateArm = 120
-            elif(self.RotateArm < 0):
-                self.RotateArm = 0
+            if(self.RotateArm > 135):
+                self.RotateArm = 135
+            elif(self.RotateArm < 45):
+                self.RotateArm = 45
 
             if (Arm1 > 15 and Arm1 < 40):
                 self.Arm1 += STEP_DEGREE*0.25
@@ -118,29 +136,29 @@ class threadingJoy(threading.Thread):#класс джойстика
                 self.Arm1 -= STEP_DEGREE*0.5
             elif(Arm1 <= -80):
                 self.Arm1 -= STEP_DEGREE
-            if(self.Arm1 > 222):
-                self.Arm1 = 222
-            elif(self.Arm1 < 45):
-                self.Arm1 = 45
+            if(self.Arm1 > 270):
+                self.Arm1 = 270
+            elif(self.Arm1 < 38):
+                self.Arm1 = 38
 
             if (Arm2 > 15 and Arm2 < 40):
-                self.Arm2 -= STEP_DEGREE*0.25
-            elif(Arm2 >=40 and Arm2 < 80):
-                self.Arm2 -= STEP_DEGREE*0.5
-            elif(Arm2 >= 70):
-                self.Arm2 -= STEP_DEGREE
-            elif (Arm2 < -15 and Arm2 > -40):
                 self.Arm2 += STEP_DEGREE*0.25
-            elif(Arm2 <= -40 and Arm2 > -80):
+            elif(Arm2 >=40 and Arm2 < 80):
                 self.Arm2 += STEP_DEGREE*0.5
-            elif(Arm2 <= -80):
+            elif(Arm2 >= 70):
                 self.Arm2 += STEP_DEGREE
+            elif (Arm2 < -15 and Arm2 > -40):
+                self.Arm2 -= STEP_DEGREE*0.25
+            elif(Arm2 <= -40 and Arm2 > -80):
+                self.Arm2 -= STEP_DEGREE*0.5
+            elif(Arm2 <= -80):
+                self.Arm2 -= STEP_DEGREE
             if(self.Arm2 > 270):
                 self.Arm2 = 270
-            elif(self.Arm2 < 30):
-                self.Arm2 = 30                    
+            elif(self.Arm2 < 45):
+                self.Arm2 = 45                  
 
-            '''if(openGrip > -50 and openGrip < 0):
+            if(openGrip > -50 and openGrip < 0):
                 self.Gripper -= STEP_DEGREE*0.25
             elif(openGrip >= 0 and openGrip < 30):
                 self.Gripper -= STEP_DEGREE*0.5
@@ -157,10 +175,12 @@ class threadingJoy(threading.Thread):#класс джойстика
             if(self.Gripper > 155):
                 self.Gripper = 155
             elif(self.Gripper < 30):
-                self.Gripper = 30'''
+                self.Gripper = 30
 
-            self.Gripper = self.valmap(grip, 0, 255, 30, 155)
-                    
+            #self.Gripper = self.valmap(grip, 0, 255, 30, 155)
+            self.rotateGripper = self.valmap(rotateGripper, 0, 255, 180, 0)
+            if(self.Arm1 < 60 and self.Arm2 < 60):
+                self.rotateGripper = 90
             if(x != 0 and y != 0): # Если нажаты обе оси
                 leftSpeed = x*y*SPEED
                 rightSpeed = -x*y*SPEED
@@ -178,11 +198,13 @@ class threadingJoy(threading.Thread):#класс джойстика
             data.update({'leftSpeed' : leftSpeed})
             data.update({'rightSpeed' : rightSpeed})
             data.update({'sensivity' : SENSIVITY})
+            data.update({'inverse' : INVERSE})
             data.update({'auto' : AUTO})
             data.update({'qr' : QR})
             data.update({'rotateArm' : self.RotateArm})
             data.update({'Arm1' : self.Arm1})
             data.update({'Arm2' : self.Arm2})
+            data.update({'rotateGripper' : self.rotateGripper})
             data.update({'gripper' : self.Gripper})
             
             if(QR):QR=False
@@ -205,6 +227,7 @@ class threadingJoy(threading.Thread):#класс джойстика
         data = pickle.dumps(data)
 
         self.sock.sendto(data, (IP, 7000))
+        self.aJ.disconnect()
 
     def auto(self):
         global AUTO
@@ -213,12 +236,22 @@ class threadingJoy(threading.Thread):#класс джойстика
     def incSensivity(self):
         global SENSIVITY
         SENSIVITY += 1
-        print(SENSIVITY)
+        print('SENSIVITY %d' % SENSIVITY)
 
     def decSensivity(self):
         global SENSIVITY
         SENSIVITY -= 1
-        print(SENSIVITY)
+        print('SENSIVITY %d' % SENSIVITY)
+
+    def incInverse(self):
+        global INVERSE
+        INVERSE += 1
+        print('INVERSE %d' % INVERSE)
+
+    def decInverse(self):
+        global INVERSE
+        INVERSE -=1
+        print('INVERSE %d' % INVERSE)
 
     def speedDown(self):
         global SPEED    
@@ -241,14 +274,25 @@ class threadingJoy(threading.Thread):#класс джойстика
         print(SPEED)
 
     def armDefault(self):
-        self.RotateArm = 70
-        self.Arm1 = 50
-        self.Arm2 = 270
+        self.RotateArm = 96
+        self.Arm1 = 38
+        self.Arm2 = 45
+        self.rotateGripper = 90
         
 
     def readQr(self):
         global QR
         QR = True
+
+    def keyParse(self, key):
+        if(str(key) == 'Key.home' or str(key) == str(7)):
+            self.decSensivity()
+        elif(str(key) == 'Key.page_up' or str(key) == str(9)):
+            self.incSensivity()
+        elif(str(key) == 'Key.end' or str(key) == str(1)):
+            self.decInverse()
+        elif(str(key) == 'Key.page_down' or str(key) == str(3)):
+            self.incInverse()
 
     def valmap(self,value, istart, istop, ostart, ostop):
         return ostart + (ostop - ostart) * ((value - istart) / (istop - istart))
@@ -272,6 +316,9 @@ recvAuto.play_pipeline()
 Joy = threadingJoy(sock)
 Joy.start()
 
+listener = Listener(on_press=Joy.keyParse) 
+listener.start()
+
 _stopping = False
 
 while not _stopping:
@@ -288,4 +335,5 @@ recvEndoskop.stop_pipeline()
 recvEndoskop.null_pipeline()
 recvAuto.stop_pipeline()
 recvAuto.null_pipeline()
+listener.stop()
 Joy.stop()

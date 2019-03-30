@@ -45,7 +45,8 @@ PORT = 8000#порт сервера
 CONTROL_IP = "192.168.42.100"#ip для трансляции
 #CONTROL_IP = "173.1.0.58"#ip для трансляции
 RTP_PORT = 5000 #порт отправки RTP видео
-SENSIVITY = 110
+SENSIVITY = 95
+INVERSIVITY = 90
 
 SHOWTIME = 5
 
@@ -63,10 +64,10 @@ class FrameHandler(threading.Thread):
         global WIDTH, HEIGHT
         super(FrameHandler, self).__init__()
         self.middle = 106
-        self.frameWidth = 4*int(WIDTH/6) - (2*int(WIDTH/6))
+        self.frameWidth = 6*int(WIDTH/8) - (2*int(WIDTH/8))
         self.width = WIDTH
         self.height = HEIGHT
-        self.controlRate = 25
+        self.controlRate = 50
         self.sender = frameSender
         self.setSpeed = setSpeed
         self.daemon = True
@@ -79,7 +80,7 @@ class FrameHandler(threading.Thread):
         
     def run(self):
         global Auto#инициализируем глобальные перменные
-        global SENSIVITY
+        global SENSIVITY, INVERSIVITY
         global QR, YELLOW, DEFAULT
 
         print('Frame handler started')
@@ -90,15 +91,17 @@ class FrameHandler(threading.Thread):
                 self.rpiCamStream.frameRequest() #отправил запрос на новый кадр
                 self._newFrameEvent.wait() #ждем появления нового кадра
                 if not (self._frame is None): #если кадр есть
-                    frame = self._frame[3*int(height/5):4*int(self.height/5), 2*int(width/6):4*int(width/6)]#обрезаем для оценки инверсности
+                    frame = self._frame[3*int(height/5):4*int(self.height/5), 2*int(width/8):6*int(width/8)]#обрезаем для оценки инверсности
                     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)#делаем ч/б
 
                     intensivity = int(gray.mean())#получаем среднее значение
-                    if(intensivity<SENSIVITY):#условие интесивности
-                        ret,binary = cv2.threshold(gray,127,255,cv2.THRESH_BINARY)#если инверсная инвертируем картинку
+                    print(intensivity)
+                    print(INVERSIVITY)
+                    if(intensivity<INVERSIVITY):#условие интесивности
+                        ret,binary = cv2.threshold(gray,SENSIVITY,255,cv2.THRESH_BINARY)#если инверсная инвертируем картинку
                         print("Inverse")
                     else:
-                        ret, binary = cv2.threshold(gray,127,255,cv2.THRESH_BINARY_INV)#переводим в ьинарное изображение
+                        ret, binary = cv2.threshold(gray,SENSIVITY,255,cv2.THRESH_BINARY_INV)#переводим в ьинарное изображение
                     # Find the contours of the frame
                     cont_img, contours, hierarchy = cv2.findContours(binary.copy(), 1, cv2.CHAIN_APPROX_NONE)#получаем список контуров
                  
@@ -116,20 +119,28 @@ class FrameHandler(threading.Thread):
                         frame = cv2.resize(frame, (WIDTH, HEIGHT))
                         self.sender.sendFrame(frame)
                             
-                        speed  = 55
+                        speed  = 40
                         
                         diff = cx/(self.frameWidth/2) - 1
                         if(cy > 40):
                             diff *= 25
-                            
-                        leftSpeed = int(speed + diff * self.controlRate)
-                        rightSpeed = int(speed - diff * self.controlRate)
+                        
+                        print('cx: %d cy: %d' % (cx, cy))
+                        if(abs(120-cx) > 15):
+                            leftSpeed = int(speed + diff * self.controlRate)
+                            rightSpeed = int(speed - diff * self.controlRate)
+                        else:
+                            leftSpeed = int(diff * self.controlRate*15)
+                            rightSpeed = int(-diff * self.controlRate*15)
                         print('Left: %s Right: %s' % (leftSpeed, rightSpeed))
                         self.setSpeed(leftSpeed, rightSpeed, True)
                         
                     else:#если не нашли контур
                         print ("I don't see the line")
-                        self.setSpeed(0,0)
+                        #self.setSpeed(0,0)
+                        time.sleep(0.05)
+
+                    time.sleep(0.05)
 
                 self._newFrameEvent.clear() #сбрасываем событие
             if (QR):
@@ -279,7 +290,7 @@ class receiver(threading.Thread):
         self._stopping = False
 
     def run(self):
-        global SPEED, Auto, SENSIVITY, CAMERA_AUTO_POS, CAMERA_AUTO_POS, IP, QR
+        global SPEED, Auto, SENSIVITY, CAMERA_AUTO_POS, IP, QR, INVERSIVITY
         while (not self._stopping):
             data, addr = self.sock.recvfrom(16384)
             data = pickle.loads(data)
@@ -293,6 +304,7 @@ class receiver(threading.Thread):
             QR = data.get('qr')
                 
             SENSIVITY = data.get('sensivity')
+            INVERSIVITY = data.get('inverse')
             leftSpeed = data.get('leftSpeed')
             rightSpeed = data.get('rightSpeed')
             self.setSpeed(leftSpeed, rightSpeed)
@@ -344,9 +356,10 @@ leftMotorForward = RPiPWM.ReverseMotor(LEFT_FORWARD)#инициализируе�
 leftMotorBackward = RPiPWM.ReverseMotor(LEFT_BACKWARD)
 rightMotorForward = RPiPWM.ReverseMotor(RIGHT_FORWARD)
 rightMotorBackward = RPiPWM.ReverseMotor(RIGHT_BACKWARD)
-rotateArm = RPiPWM.Servo120(10, extended = True)
-Arm1 = RPiPWM.Servo270(9, extended = True)
-Arm2 = RPiPWM.Servo270(8, extended = True)
+rotateArm = RPiPWM.Servo180(1, extended = True)
+Arm1 = RPiPWM.Servo270(10, extended = True)
+Arm2 = RPiPWM.Servo270(9, extended = True)
+rotateGripper = RPiPWM.Servo180(8, extended = True)
 gripper = RPiPWM.Servo180(7, extended = True)
 camera = RPiPWM.Servo180(0, extended = True)
 
@@ -381,6 +394,7 @@ server = receiver(sock, O, setSpeed)
 server.addChannel("rotateArm", rotateArm)
 server.addChannel("Arm1", Arm1)
 server.addChannel("Arm2", Arm2)
+server.addChannel("rotateGripper", rotateGripper)
 server.addChannel("gripper", gripper)
 server.addChannel("camera", camera)
 
@@ -405,15 +419,15 @@ rpiCamStreamer.start() #запускаем трансляцию
 debugCvSender = cv_stream.OpenCVRTPStreamer(resolution = RESOLUTION, framerate = FRAMERATE, host = (CONTROL_IP, RTP_PORT+2000))
 debugCvSender.start()
 
-#qrStreamer = cv_stream.OpenCVRTPStreamer(resolution = RESOLUTION, framerate = FRAMERATE+5, host = (CONTROL_IP, RTP_PORT+1000))
-#qrStreamer.start()
+qrStreamer = cv_stream.OpenCVRTPStreamer(resolution = RESOLUTION, framerate = FRAMERATE, host = (CONTROL_IP, RTP_PORT+1000))
+qrStreamer.start()
 
 print('OpenCV version: %s' % cv2.__version__)
 
-#cap = cv2.VideoCapture(DEVICE)
-#cap.set(3, WIDTH)
-#cap.set(4, HEIGHT)
-#font = cv2.FONT_HERSHEY_SIMPLEX
+cap = cv2.VideoCapture(DEVICE)
+cap.set(3, WIDTH)
+cap.set(4, HEIGHT)
+font = cv2.FONT_HERSHEY_SIMPLEX
 
 #поток обработки кадров    
 frameHandler = FrameHandler(rpiCamStreamer, debugCvSender, setSpeed)
@@ -427,8 +441,7 @@ qrData = ''
 detectTime = 0
 while not _stopping:
     try:
-        time.sleep(1)
-        '''ret, frame = cap.read()
+        ret, frame = cap.read()
         if ret:
             decodedObjects = pyzbar.decode(frame)
             if(decodedObjects != []):
@@ -475,7 +488,8 @@ while not _stopping:
                 qrData = ''
 
             frame = cv2.resize(frame, (WIDTH, HEIGHT))
-            qrStreamer.sendFrame(frame)'''
+            qrStreamer.sendFrame(frame)
+            time.sleep(0.01)
             
     except (KeyboardInterrupt, SystemExit):
         print("Ctrl+C pressed")
@@ -484,8 +498,8 @@ while not _stopping:
 #останавливаем обработку кадров
 frameHandler.stop()
 work.stop()
-#debugCvSender.stop()
-#qrStreamer.stop()
+debugCvSender.stop()
+qrStreamer.stop()
 adc.stop()
 O.stop()
 server.stop()
