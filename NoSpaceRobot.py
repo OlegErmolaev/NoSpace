@@ -29,10 +29,10 @@ YELLOW = '\033[33;1m'
 GREEN = '\033[32;1m'
 DEFAULT = '\033[39;49m'
 
-LEFT_FORWARD = 12#левый борт
-LEFT_BACKWARD = 13#левый борт
-RIGHT_FORWARD = 14#правый борт
-RIGHT_BACKWARD = 15
+LEFT_FORWARD = 6#левый борт
+LEFT_BACKWARD = 7#левый борт
+RIGHT_FORWARD = 5#правый борт
+RIGHT_BACKWARD = 8
 
 ZERO_CORRECTIN = 10
 
@@ -67,7 +67,7 @@ class FrameHandler(threading.Thread):
         self.frameWidth = 6*int(WIDTH/8) - (2*int(WIDTH/8))
         self.width = WIDTH
         self.height = HEIGHT
-        self.controlRate = 50
+        self.controlRate = 10
         self.sender = frameSender
         self.setSpeed = setSpeed
         self.daemon = True
@@ -81,7 +81,7 @@ class FrameHandler(threading.Thread):
     def run(self):
         global Auto#инициализируем глобальные перменные
         global SENSIVITY, INVERSIVITY
-        global QR, YELLOW, DEFAULT
+        global QR, YELLOW, DEFAULT, RED
 
         print('Frame handler started')
         while not self._stopped.is_set():#пока мы живём
@@ -91,27 +91,39 @@ class FrameHandler(threading.Thread):
                 self.rpiCamStream.frameRequest() #отправил запрос на новый кадр
                 self._newFrameEvent.wait() #ждем появления нового кадра
                 if not (self._frame is None): #если кадр есть
-                    frame = self._frame[3*int(height/5):4*int(self.height/5), 2*int(width/8):6*int(width/8)]#обрезаем для оценки инверсности
-                    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)#делаем ч/б
-
+                    frame = self._frame[3*int(self.height/6):self.height-11, 2*int(width/8):6*int(width/8)]#обрезаем для оценки инверсности
+                    
+                    gray = cv2.inRange(frame, (0,0,0), (SENSIVITY,SENSIVITY,SENSIVITY))
                     intensivity = int(gray.mean())#получаем среднее значение
                     print(intensivity)
-                    print(INVERSIVITY)
-                    if(intensivity<INVERSIVITY):#условие интесивности
-                        ret,binary = cv2.threshold(gray,SENSIVITY,255,cv2.THRESH_BINARY)#если инверсная инвертируем картинку
+                    if((intensivity>INVERSIVITY) and False):#условие интесивности
+                        ret,binary = cv2.threshold(gray,0,255,cv2.THRESH_BINARY_INV+cv2.THRESH_OTSU)
+                        binary = cv2.GaussianBlur(binary,(5,5),10)
                         print("Inverse")
                     else:
-                        ret, binary = cv2.threshold(gray,SENSIVITY,255,cv2.THRESH_BINARY_INV)#переводим в ьинарное изображение
+                        binary = cv2.GaussianBlur(gray,(5,5),10)
+
+                        
+                    
+                    
                     # Find the contours of the frame
                     cont_img, contours, hierarchy = cv2.findContours(binary.copy(), 1, cv2.CHAIN_APPROX_NONE)#получаем список контуров
-                 
+                    cont = contours
                     # Find the biggest contour (if detected)
-                    if len(contours) > 0:#если нашли контур
-                        c = max(contours, key=cv2.contourArea)#ищем максимальный контур
+                    for i in range(len(contours)):#если нашли контур
+                        c = contours[i]
+                        if(cv2.contourArea(c) < 3000 and cv2.contourArea(c) > 1500 and c.size > 10):
+                            cont.append(c)
+                    if(len(cont) > 0):
+                        c = max(cont, key=cv2.contourArea)
                         M = cv2.moments(c)#получаем массив с координатами
                         if(M['m00']!=0):
                             cx = int(M['m10']/M['m00'])#координата центра по х
                             cy = int(M['m01']/M['m00'])#координата центра по у
+
+                        #(x, y), (MA, ma), angle = cv2.fitEllipse(c)
+                        #ka = 90 - abs(90-angle)
+                            
                         cv2.line(frame, (cx,0), (cx,height), (255,0,0), 1)#рисуем линни
                         cv2.line(frame, (0,cy), (width,cy), (255,0,0), 1)
                  
@@ -119,19 +131,17 @@ class FrameHandler(threading.Thread):
                         frame = cv2.resize(frame, (WIDTH, HEIGHT))
                         self.sender.sendFrame(frame)
                             
-                        speed  = 40
+                        speed  = 30
                         
                         diff = cx/(self.frameWidth/2) - 1
                         if(cy > 40):
                             diff *= 25
-                        
-                        print('cx: %d cy: %d' % (cx, cy))
-                        if(abs(120-cx) > 15):
+                        if(abs(120-cx) > 10):
                             leftSpeed = int(speed + diff * self.controlRate)
                             rightSpeed = int(speed - diff * self.controlRate)
                         else:
-                            leftSpeed = int(diff * self.controlRate*15)
-                            rightSpeed = int(-diff * self.controlRate*15)
+                            leftSpeed = int(diff*5)
+                            rightSpeed = int(-diff*5)
                         print('Left: %s Right: %s' % (leftSpeed, rightSpeed))
                         self.setSpeed(leftSpeed, rightSpeed, True)
                         
@@ -153,7 +163,7 @@ class FrameHandler(threading.Thread):
                         for obj in decodedObjects:
                             data = obj.data.decode("UTF-8")
                             if(data != ''):
-                                print( YELLOW + data + DEFAULT)
+                                print(YELLOW + data + DEFAULT)
                                 self.qrData = data
                                 QR = False
                 self._newFrameEvent.clear() #сбрасываем событие
@@ -357,11 +367,11 @@ leftMotorBackward = RPiPWM.ReverseMotor(LEFT_BACKWARD)
 rightMotorForward = RPiPWM.ReverseMotor(RIGHT_FORWARD)
 rightMotorBackward = RPiPWM.ReverseMotor(RIGHT_BACKWARD)
 rotateArm = RPiPWM.Servo180(1, extended = True)
-Arm1 = RPiPWM.Servo270(10, extended = True)
-Arm2 = RPiPWM.Servo270(9, extended = True)
-rotateGripper = RPiPWM.Servo180(8, extended = True)
-gripper = RPiPWM.Servo180(7, extended = True)
-camera = RPiPWM.Servo180(0, extended = True)
+Arm1 = RPiPWM.Servo270(9, extended = True)
+Arm2 = RPiPWM.Servo270(3, extended = True)
+rotateGripper = RPiPWM.Servo180(2, extended = True)
+gripper = RPiPWM.Servo180(0, extended = True)
+camera = RPiPWM.Servo180(4, extended = True)
 
 setSpeed(10,10)#инициализируем драйвера
 
@@ -419,14 +429,17 @@ rpiCamStreamer.start() #запускаем трансляцию
 debugCvSender = cv_stream.OpenCVRTPStreamer(resolution = RESOLUTION, framerate = FRAMERATE, host = (CONTROL_IP, RTP_PORT+2000))
 debugCvSender.start()
 
-qrStreamer = cv_stream.OpenCVRTPStreamer(resolution = RESOLUTION, framerate = FRAMERATE, host = (CONTROL_IP, RTP_PORT+1000))
+qrStreamer = cv_stream.OpenCVRTPStreamer(resolution = (320,240), framerate = 10, host = (CONTROL_IP, RTP_PORT+1000))
 qrStreamer.start()
 
 print('OpenCV version: %s' % cv2.__version__)
 
-cap = cv2.VideoCapture(DEVICE)
-cap.set(3, WIDTH)
-cap.set(4, HEIGHT)
+cap = cv2.VideoCapture('v4l2src device="/dev/video0" ! image/jpeg, width=320, height=240, pixel-aspect-ratio=1/1, framerate=30/1 ! jpegdec ! videoconvert ! video/x-raw, format=BGR ! appsink', cv2.CAP_GSTREAMER)
+#cap.set(cv2.CAP_PROP_FRAME_WIDTH, 320)
+#cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 240)
+#cap.set(cv2.CAP_PROP_FPS, 25)
+#cap.set(3, WIDTH)
+#cap.set(4, HEIGHT)
 font = cv2.FONT_HERSHEY_SIMPLEX
 
 #поток обработки кадров    
@@ -434,67 +447,75 @@ frameHandler = FrameHandler(rpiCamStreamer, debugCvSender, setSpeed)
 
 frameHandler.start() #запускаем обработку
     
-
-
 _stopping = False
 qrData = ''
 detectTime = 0
 while not _stopping:
     try:
+        
+        
         ret, frame = cap.read()
         if ret:
-            decodedObjects = pyzbar.decode(frame)
-            if(decodedObjects != []):
-                for obj in decodedObjects:
-                    data = obj.data.decode("UTF-8")
-                    if(data != qrData):
-                        qrData = data
-                        print(data)
-                        detectTime = time.time()
-                    
-                    
-            for decodedObject in decodedObjects: 
-                points = decodedObject.polygon
-             
-                # If the points do not form a quad, find convex hull
-                if len(points) > 4 : 
-                    hull = cv2.convexHull(np.array([point for point in points], dtype=np.float32))
-                    hull = list(map(tuple, np.squeeze(hull)))
-                else: 
-                    hull = points;
+            if(QR):
+                decodedObjects = pyzbar.decode(frame)
+                if(decodedObjects != []):
+                    for obj in decodedObjects:
+                        data = obj.data.decode("UTF-8")
+                        if(data != qrData):
+                            qrData = data
+                            print(YELLOW + data + DEFAULT)
+                            detectTime = time.time()
+                        
+                        
+                for decodedObject in decodedObjects: 
+                    points = decodedObject.polygon
                  
-                # Number of points in the convex hull
-                n = len(hull)
-                
-                # Draw the convext hull
-                for j in range(0,n):
-                    cv2.line(frame, hull[j], hull[ (j+1) % n], (255,0,0), 3)
-
-            if(time.time()-detectTime < SHOWTIME and qrData !=''):
-                transData = translit(data)
-                frame = cv2.resize(frame,(640,480))
-                if(len(data) > 30):
-                    img = np.zeros([90,630,3],dtype=np.uint8)
-                    img.fill(255) # or img[:] = 255
-                    frame[10:100,5:635] = img
-                    cv2.putText(frame,transData[0:30],(4,45),font,1.2,(0,0,255),2)
-                    cv2.putText(frame,transData[31:len(transData)],(4,90),font,1.2,(0,0,255),2)
+                    # If the points do not form a quad, find convex hull
+                    if len(points) > 4 : 
+                        hull = cv2.convexHull(np.array([point for point in points], dtype=np.float32))
+                        hull = list(map(tuple, np.squeeze(hull)))
+                    else: 
+                        hull = points;
+                     
+                    # Number of points in the convex hull
+                    n = len(hull)
+                    
+                    # Draw the convext hull
+                    for j in range(0,n):
+                        cv2.line(frame, hull[j], hull[ (j+1) % n], (255,0,0), 3)
+                if(time.time()-detectTime < SHOWTIME and qrData !=''):
+                    transData = translit(data)
+                    #frame = cv2.resize(frame,(640,480))
+                    if(len(data) > 30):
+                        img = np.zeros([45,315,3],dtype=np.uint8)
+                        img.fill(255) # or img[:] = 255
+                        frame[5:50,3:318] = img
+                        cv2.putText(frame,transData[0:30],(2,22),font,0.6,(0,0,255),2)
+                        cv2.putText(frame,transData[31:len(transData)],(2,45),font,0.6,(0,0,255),2)
+                    else:
+                        img = np.zeros([25,315,3],dtype=np.uint8)
+                        img.fill(255) # or img[:] = 255
+                        frame[5:30,3:318] = img
+                        cv2.putText(frame,transData,(2,22),font,0.6,(0,0,255),2)
                 else:
-                    img = np.zeros([50,630,3],dtype=np.uint8)
-                    img.fill(255) # or img[:] = 255
-                    frame[10:60,5:635] = img
-                    cv2.putText(frame,transData,(4,45),font,1.2,(0,0,255),2)
-            else:
-                qrData = ''
+                    qrData = ''
 
-            frame = cv2.resize(frame, (WIDTH, HEIGHT))
             qrStreamer.sendFrame(frame)
-            time.sleep(0.01)
-            
+        
     except (KeyboardInterrupt, SystemExit):
         print("Ctrl+C pressed")
         _stopping = True
-
+        
+leftMotorForward.SetMcs(0)
+leftMotorBackward.SetMcs(0)
+rightMotorForward.SetMcs(0)
+rightMotorBackward.SetMcs(0)
+rotateArm.SetMcs(0)
+Arm1.SetMcs(0)
+Arm2.SetMcs(0)
+rotateGripper.SetMcs(0)
+gripper.SetMcs(0)
+camera.SetMcs(0)
 #останавливаем обработку кадров
 frameHandler.stop()
 work.stop()
@@ -508,3 +529,4 @@ rpiCamStreamer.stop()
 rpiCamStreamer.close()
 
 setSpeed(0,0)
+

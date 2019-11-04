@@ -17,13 +17,13 @@ IP = '192.168.42.220'#IP робота
 #IP = '173.1.0.52'
 _IP = str(os.popen('hostname -I | cut -d\' \' -f1').readline().replace('\n','')) #получаем IP, удаляем \n
 SPEED = 80#скорость
-STEP_DEGREE = 3
+STEP_DEGREE = 2
 CAM_STEP = 3
 
 AUTO = False
 QR = False
-SENSIVITY = 55
-INVERSE = 80
+SENSIVITY = 60
+INVERSE = 50
 CAMERA_AUTO_POS = 160
 
 #потоковые классы
@@ -35,9 +35,9 @@ class threadingJoy(threading.Thread):#класс джойстика
         self.camPos = 115
         
         self.RotateArm = 96
-        self.Arm1 = 30
-        self.Arm2 = 45
-        self.rotateGripper = 90
+        self.Arm1 = 48
+        self.Arm2 = 47
+        self.rotateGripper = 95
         self.Gripper = 120
 
         self.sock = sock
@@ -56,22 +56,18 @@ class threadingJoy(threading.Thread):#класс джойстика
                 print("Problem with joystick")
                 self._stopping = True
 
-    
         self.aJ = AvrPyJoy.Joystic()#создаём объект Joystic
         try:
             self.aJ.connect(0,timeout=10)#подключаем (req: path;manually: baudrate=9600, timeout=5)
             self.aJ.start()#запускаем поток
-            print("Joystick initialized ttyUSB0")
         except:
             try:
                 self.aJ.connect(1,timeout=10)#подключаем (req: path;manually: baudrate=9600, timeout=5)
                 self.aJ.start()#запускаем поток
-                print("Joystick initialized ttyUSB1")
             except:
                 try:
                     self.aJ.connect(2,timeout=10)#подключаем (req: path;manually: baudrate=9600, timeout=5)
                     self.aJ.start()#запускаем поток
-                    print("Joystick initialized ttyUSB2")
                 except:
                     print('problem with joystick')
                     self._stopping = True
@@ -80,6 +76,7 @@ class threadingJoy(threading.Thread):#класс джойстика
            
         if not self._stopping:
             self.J.connectButton('a', self.auto)
+            self.J.connectButton('b', self.armBeacon)
             self.J.connectButton('y', self.speedDown)
             self.J.connectButton('select', self.camDown)
             self.J.connectButton('start', self.camUp)
@@ -104,21 +101,21 @@ class threadingJoy(threading.Thread):#класс джойстика
             Arm2 = int(self.J.Axis.get('ry')*100)
             openGrip = int(self.J.Axis.get('z')*100)
             closeGrip = int(self.J.Axis.get('rz')*100)
-            rotateGripper = self.aJ.getAxis('x')
+            rotateGripper = self.aJ.getAxis('y')
             #grip = self.aJ.getAxis('x')
                     
             if (rotateArm > 15 and rotateArm < 40):
-                self.RotateArm += STEP_DEGREE*0.25
+                self.RotateArm += STEP_DEGREE*0.25/STEP_DEGREE
             elif(rotateArm >=40 and rotateArm < 80):
-                self.RotateArm += STEP_DEGREE*0.5
+                self.RotateArm += STEP_DEGREE*0.5/STEP_DEGREE
             elif(rotateArm >= 70):
-                self.RotateArm += STEP_DEGREE
+                self.RotateArm += STEP_DEGREE/STEP_DEGREE
             elif (rotateArm < -15 and rotateArm > -40):
-                self.RotateArm -= STEP_DEGREE*0.25
+                self.RotateArm -= STEP_DEGREE*0.25/STEP_DEGREE
             elif(rotateArm <= -40 and rotateArm > -80):
-                self.RotateArm -= STEP_DEGREE*0.5
+                self.RotateArm -= STEP_DEGREE*0.5/STEP_DEGREE
             elif(rotateArm <= -80):
-                self.RotateArm -= STEP_DEGREE
+                self.RotateArm -= STEP_DEGREE/STEP_DEGREE
             if(self.RotateArm > 135):
                 self.RotateArm = 135
             elif(self.RotateArm < 45):
@@ -138,8 +135,8 @@ class threadingJoy(threading.Thread):#класс джойстика
                 self.Arm1 -= STEP_DEGREE
             if(self.Arm1 > 270):
                 self.Arm1 = 270
-            elif(self.Arm1 < 38):
-                self.Arm1 = 38
+            elif(self.Arm1 < 48):
+                self.Arm1 = 48
 
             if (Arm2 > 15 and Arm2 < 40):
                 self.Arm2 += STEP_DEGREE*0.25
@@ -155,22 +152,22 @@ class threadingJoy(threading.Thread):#класс джойстика
                 self.Arm2 -= STEP_DEGREE
             if(self.Arm2 > 270):
                 self.Arm2 = 270
-            elif(self.Arm2 < 45):
-                self.Arm2 = 45                  
+            elif(self.Arm2 < 47):
+                self.Arm2 = 47                  
 
             if(openGrip > -50 and openGrip < 0):
-                self.Gripper -= STEP_DEGREE*0.25
+                self.Gripper += STEP_DEGREE*0.25
             elif(openGrip >= 0 and openGrip < 30):
-                self.Gripper -= STEP_DEGREE*0.5
+                self.Gripper += STEP_DEGREE*0.5
             elif(openGrip >= 30):
-                self.Gripper -= STEP_DEGREE
+                self.Gripper += STEP_DEGREE
 
             if(closeGrip > -50 and closeGrip < 0):
-                self.Gripper += STEP_DEGREE*0.25
+                self.Gripper -= STEP_DEGREE*0.25
             elif(closeGrip >= 0 and closeGrip < 30):
-                self.Gripper += STEP_DEGREE*0.5
+                self.Gripper -= STEP_DEGREE*0.5
             elif(closeGrip >= 30):
-                self.Gripper += STEP_DEGREE
+                self.Gripper -= STEP_DEGREE
 
             if(self.Gripper > 155):
                 self.Gripper = 155
@@ -178,9 +175,9 @@ class threadingJoy(threading.Thread):#класс джойстика
                 self.Gripper = 30
 
             #self.Gripper = self.valmap(grip, 0, 255, 30, 155)
-            self.rotateGripper = self.valmap(rotateGripper, 0, 255, 180, 0)
+            self.rotateGripper = self.valmap(rotateGripper, 0, 255, 0, 180)
             if(self.Arm1 < 60 and self.Arm2 < 60):
-                self.rotateGripper = 90
+                self.rotateGripper = 95
             if(x != 0 and y != 0): # Если нажаты обе оси
                 leftSpeed = x*y*SPEED
                 rightSpeed = -x*y*SPEED
@@ -204,8 +201,8 @@ class threadingJoy(threading.Thread):#класс джойстика
             data.update({'rotateArm' : self.RotateArm})
             data.update({'Arm1' : self.Arm1})
             data.update({'Arm2' : self.Arm2})
-            data.update({'rotateGripper' : self.rotateGripper})
             data.update({'gripper' : self.Gripper})
+            data.update({'rotateGripper' : self.rotateGripper})
             
             if(QR):QR=False
             if(AUTO):
@@ -275,10 +272,15 @@ class threadingJoy(threading.Thread):#класс джойстика
 
     def armDefault(self):
         self.RotateArm = 96
-        self.Arm1 = 38
-        self.Arm2 = 45
-        self.rotateGripper = 90
-        
+        self.Arm1 = 48
+        self.Arm2 = 47
+        self.rotateGripper = 95
+
+    def armBeacon(self):
+        self.RotateArm = 96
+        self.Arm1 = 247
+        self.Arm2 = 255
+        self.Gripper = 155
 
     def readQr(self):
         global QR
