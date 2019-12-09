@@ -36,7 +36,7 @@ class threadingJoy(threading.Thread):#класс джойстика
         
         self.RotateArm = 96
         self.Arm1 = 48
-        self.Arm2 = 47
+        self.Arm2 = 56
         self.rotateGripper = 95
         self.Gripper = 120
 
@@ -76,7 +76,6 @@ class threadingJoy(threading.Thread):#класс джойстика
            
         if not self._stopping:
             self.J.connectButton('a', self.auto)
-            self.J.connectButton('b', self.armBeacon)
             self.J.connectButton('y', self.speedDown)
             self.J.connectButton('select', self.camDown)
             self.J.connectButton('start', self.camUp)
@@ -102,6 +101,7 @@ class threadingJoy(threading.Thread):#класс джойстика
             openGrip = int(self.J.Axis.get('z')*100)
             closeGrip = int(self.J.Axis.get('rz')*100)
             rotateGripper = self.aJ.getAxis('y')
+            rotate = self.J.Buttons.get('b')
             #grip = self.aJ.getAxis('x')
                     
             if (rotateArm > 15 and rotateArm < 40):
@@ -198,6 +198,7 @@ class threadingJoy(threading.Thread):#класс джойстика
             data.update({'inverse' : INVERSE})
             data.update({'auto' : AUTO})
             data.update({'qr' : QR})
+            data.update({'rotate' : bool(rotate)})
             data.update({'rotateArm' : self.RotateArm})
             data.update({'Arm1' : self.Arm1})
             data.update({'Arm2' : self.Arm2})
@@ -273,14 +274,8 @@ class threadingJoy(threading.Thread):#класс джойстика
     def armDefault(self):
         self.RotateArm = 96
         self.Arm1 = 48
-        self.Arm2 = 47
+        self.Arm2 = 56
         self.rotateGripper = 95
-
-    def armBeacon(self):
-        self.RotateArm = 96
-        self.Arm1 = 247
-        self.Arm2 = 255
-        self.Gripper = 155
 
     def readQr(self):
         global QR

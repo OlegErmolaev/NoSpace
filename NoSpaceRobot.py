@@ -67,7 +67,7 @@ class FrameHandler(threading.Thread):
         self.frameWidth = 6*int(WIDTH/8) - (2*int(WIDTH/8))
         self.width = WIDTH
         self.height = HEIGHT
-        self.controlRate = 10
+        self.controlRate = 5
         self.sender = frameSender
         self.setSpeed = setSpeed
         self.daemon = True
@@ -91,7 +91,7 @@ class FrameHandler(threading.Thread):
                 self.rpiCamStream.frameRequest() #отправил запрос на новый кадр
                 self._newFrameEvent.wait() #ждем появления нового кадра
                 if not (self._frame is None): #если кадр есть
-                    frame = self._frame[3*int(self.height/6):self.height-11, 2*int(width/8):6*int(width/8)]#обрезаем для оценки инверсности
+                    frame = self._frame[3*int(self.height/6):5*int(self.height/6), 2*int(width/8):6*int(width/8)]#обрезаем для оценки инверсности
                     
                     gray = cv2.inRange(frame, (0,0,0), (SENSIVITY,SENSIVITY,SENSIVITY))
                     intensivity = int(gray.mean())#получаем среднее значение
@@ -372,6 +372,7 @@ Arm2 = RPiPWM.Servo270(3, extended = True)
 rotateGripper = RPiPWM.Servo180(2, extended = True)
 gripper = RPiPWM.Servo180(0, extended = True)
 camera = RPiPWM.Servo180(4, extended = True)
+rotateMotor = RPiPWM.Switch(12, extended = False)
 
 setSpeed(10,10)#инициализируем драйвера
 
@@ -407,6 +408,7 @@ server.addChannel("Arm2", Arm2)
 server.addChannel("rotateGripper", rotateGripper)
 server.addChannel("gripper", gripper)
 server.addChannel("camera", camera)
+server.addChannel("rotate", rotateMotor)
 
 server.start()
 print("Listening on port %d..." % PORT)
@@ -429,18 +431,18 @@ rpiCamStreamer.start() #запускаем трансляцию
 debugCvSender = cv_stream.OpenCVRTPStreamer(resolution = RESOLUTION, framerate = FRAMERATE, host = (CONTROL_IP, RTP_PORT+2000))
 debugCvSender.start()
 
-qrStreamer = cv_stream.OpenCVRTPStreamer(resolution = (320,240), framerate = 10, host = (CONTROL_IP, RTP_PORT+1000))
-qrStreamer.start()
+#qrStreamer = cv_stream.OpenCVRTPStreamer(resolution = (320,240), framerate = 15, host = (CONTROL_IP, RTP_PORT+1000))
+#qrStreamer.start()
 
 print('OpenCV version: %s' % cv2.__version__)
 
-cap = cv2.VideoCapture('v4l2src device="/dev/video0" ! image/jpeg, width=320, height=240, pixel-aspect-ratio=1/1, framerate=30/1 ! jpegdec ! videoconvert ! video/x-raw, format=BGR ! appsink', cv2.CAP_GSTREAMER)
+#cap = cv2.VideoCapture('v4l2src device="/dev/video0" ! image/jpeg, width=320, height=240, pixel-aspect-ratio=1/1, framerate=30/1 ! jpegdec ! videoconvert ! video/x-raw, format=BGR ! appsink', cv2.CAP_GSTREAMER)
 #cap.set(cv2.CAP_PROP_FRAME_WIDTH, 320)
 #cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 240)
 #cap.set(cv2.CAP_PROP_FPS, 25)
 #cap.set(3, WIDTH)
 #cap.set(4, HEIGHT)
-font = cv2.FONT_HERSHEY_SIMPLEX
+#font = cv2.FONT_HERSHEY_SIMPLEX
 
 #поток обработки кадров    
 frameHandler = FrameHandler(rpiCamStreamer, debugCvSender, setSpeed)
@@ -453,54 +455,10 @@ detectTime = 0
 while not _stopping:
     try:
         
-        
-        ret, frame = cap.read()
-        if ret:
-            if(QR):
-                decodedObjects = pyzbar.decode(frame)
-                if(decodedObjects != []):
-                    for obj in decodedObjects:
-                        data = obj.data.decode("UTF-8")
-                        if(data != qrData):
-                            qrData = data
-                            print(YELLOW + data + DEFAULT)
-                            detectTime = time.time()
-                        
-                        
-                for decodedObject in decodedObjects: 
-                    points = decodedObject.polygon
-                 
-                    # If the points do not form a quad, find convex hull
-                    if len(points) > 4 : 
-                        hull = cv2.convexHull(np.array([point for point in points], dtype=np.float32))
-                        hull = list(map(tuple, np.squeeze(hull)))
-                    else: 
-                        hull = points;
-                     
-                    # Number of points in the convex hull
-                    n = len(hull)
-                    
-                    # Draw the convext hull
-                    for j in range(0,n):
-                        cv2.line(frame, hull[j], hull[ (j+1) % n], (255,0,0), 3)
-                if(time.time()-detectTime < SHOWTIME and qrData !=''):
-                    transData = translit(data)
-                    #frame = cv2.resize(frame,(640,480))
-                    if(len(data) > 30):
-                        img = np.zeros([45,315,3],dtype=np.uint8)
-                        img.fill(255) # or img[:] = 255
-                        frame[5:50,3:318] = img
-                        cv2.putText(frame,transData[0:30],(2,22),font,0.6,(0,0,255),2)
-                        cv2.putText(frame,transData[31:len(transData)],(2,45),font,0.6,(0,0,255),2)
-                    else:
-                        img = np.zeros([25,315,3],dtype=np.uint8)
-                        img.fill(255) # or img[:] = 255
-                        frame[5:30,3:318] = img
-                        cv2.putText(frame,transData,(2,22),font,0.6,(0,0,255),2)
-                else:
-                    qrData = ''
-
-            qrStreamer.sendFrame(frame)
+        time.sleep(1)
+        #ret, frame = cap.read()
+        #if ret:
+            #qrStreamer.sendFrame(frame)
         
     except (KeyboardInterrupt, SystemExit):
         print("Ctrl+C pressed")
