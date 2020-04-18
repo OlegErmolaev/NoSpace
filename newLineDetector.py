@@ -1,7 +1,7 @@
 import cv2
 import time
 
-cap = cv2.VideoCapture(0)
+cap = cv2.VideoCapture(1)
 speed = 50
 while(True):
     ret, frame = cap.read()
@@ -13,8 +13,10 @@ while(True):
         # Find the biggest contour (if detected)
         if len(contours) > 0:#если нашли контур
             c = max(contours, key=cv2.contourArea)#ищем максимальный контур
+            
             (x, y), (MA, ma), angle =  cv2.fitEllipse(c)
             ka = 90-abs(90-angle)
+            print(ka)
             kp = 1.0
             err = (x - gray.shape[1]/2) * kp * ka
             leftSpeed = speed + err
