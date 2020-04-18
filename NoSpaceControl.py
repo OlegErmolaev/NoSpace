@@ -310,13 +310,13 @@ class threadingJoy(threading.Thread):#класс джойстика
             t1 = (acos((self.p0**2+self.p1**2-AC**2)/(2*self.p0*self.p1)))
             t0 = degrees(atan((self.yDiff + y)/(self.xDiff+x))+asin(self.p1*sin(t1)/AC))
             t1 = degrees(t1)
-            return 180 - t0 + (36-14),t1+27
+            return 180 - t0 + (25-14),t1+17
         except:
             return self.Arm1, self.Arm2
 
     def getCoordinates(self, Arm1, Arm2):
-        t0 = radians(180 - Arm1 + (36 - 14))
-        t1 = radians(Arm2 - 27)
+        t0 = radians(180 - Arm1 + (25 - 14))
+        t1 = radians(Arm2 - 17)
         x = abs(self.xDiff) + self.p0 * cos(t0) - self.p1 * cos (t0+t1)
         y = abs(self.yDiff) + self.p0 * sin(t0) - self.p1 * sin(t0+t1)
         return x,y
@@ -348,6 +348,8 @@ class threadingJoy(threading.Thread):#класс джойстика
     def speedDown(self):
         global SPEED    
         SPEED -= 10
+        if(SPEED < 0):
+            SPEED = 0
         print(SPEED)
 
     def camUp(self):    
@@ -363,6 +365,8 @@ class threadingJoy(threading.Thread):#класс джойстика
     def speedUp(self):
         global SPEED        
         SPEED += 10
+        if (SPEED > 100):
+            SPEED = 100
         print(SPEED)
 
     def armDefault(self):
