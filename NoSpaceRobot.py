@@ -18,7 +18,7 @@ import cv_stream
 
 DEVICE = 0
 
-WIDTH, HEIGHT = 320, 240
+WIDTH, HEIGHT = 640, 480
 RESOLUTION = (WIDTH, HEIGHT)
 FRAMERATE = 25
 FORMAT = rpicam.VIDEO_MJPEG
@@ -29,10 +29,10 @@ YELLOW = '\033[33;1m'
 GREEN = '\033[32;1m'
 DEFAULT = '\033[39;49m'
 
-LEFT_FORWARD = 15#левый борт
-LEFT_BACKWARD = 12#левый борт
+LEFT_FORWARD = 12#левый борт
+LEFT_BACKWARD = 13#левый борт
 RIGHT_FORWARD = 14#правый борт
-RIGHT_BACKWARD = 13
+RIGHT_BACKWARD = 15
 
 ZERO_CORRECTIN = 10
 
@@ -368,11 +368,11 @@ rightMotorForward = RPiPWM.ReverseMotor(RIGHT_FORWARD)
 rightMotorBackward = RPiPWM.ReverseMotor(RIGHT_BACKWARD)
 rotateArm = RPiPWM.Servo180(0)
 Arm1 = RPiPWM.Servo270(1)
-Arm2 = RPiPWM.Servo270(4)
-rotateGripper = RPiPWM.Servo270(3, extended = True)
-gripper = RPiPWM.Servo180(2)
-camera = RPiPWM.Servo180(10)
-tail = RPiPWM.Servo270(8, extended = True)
+Arm2 = RPiPWM.Servo270(3)
+rotateGripper = RPiPWM.Servo270(2, extended = True)
+gripper = RPiPWM.Servo180(4, extended = True)
+camera = RPiPWM.Servo180(8)
+tail = RPiPWM.Servo270(9, extended = True)
 
 
 setSpeed(0,0)#инициализируем драйвера
@@ -432,11 +432,19 @@ debugCvSender.start()
 qrStreamer = cv_stream.OpenCVRTPStreamer(resolution = RESOLUTION, framerate = FRAMERATE, host = (CONTROL_IP, RTP_PORT+1000))
 qrStreamer.start()
 
+rpicamStreamer = cv_stream.OpenCVRTPStreamer(resolution = RESOLUTION, framerate = FRAMERATE, host = (CONTROL_IP, RTP_PORT))
+rpicamStreamer.start()
+
 print('OpenCV version: %s' % cv2.__version__)
 
 cap = cv2.VideoCapture(DEVICE)
 cap.set(3, WIDTH)
 cap.set(4, HEIGHT)
+
+picam = cv2.VideoCapture(2)
+picam.set(3, WIDTH)
+picam.set(4, HEIGHT)
+
 font = cv2.FONT_HERSHEY_SIMPLEX
 
 #поток обработки кадров    
@@ -450,9 +458,7 @@ _stopping = False
 qrData = ''
 detectTime = 0
 while not _stopping:
-    try:
-        
-        
+    try:       
         ret, frame = cap.read()
         if ret:
             if(QR):
@@ -500,6 +506,10 @@ while not _stopping:
                     qrData = ''
             
             qrStreamer.sendFrame(frame)
+        ret, frame = picam.read()
+        if ret:
+            frame = cv2.flip(frame,-1)
+            rpicamStreamer.sendFrame(frame)
         
     except (KeyboardInterrupt, SystemExit):
         print("Ctrl+C pressed")
@@ -520,6 +530,7 @@ camera.SetMcs(0)
 work.stop()
 debugCvSender.stop()
 qrStreamer.stop()
+rpicamStreamer.stop()
 adc.stop()
 O.stop()
 server.stop()

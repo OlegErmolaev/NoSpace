@@ -17,9 +17,10 @@ from math import *
 IP = '192.168.42.220'#IP робота
 #IP = '173.1.0.52'
 _IP = str(os.popen('hostname -I | cut -d\' \' -f1').readline().replace('\n','')) #получаем IP, удаляем \n
-SPEED = 80#скорость
-STEP_DEGREE = 2
-STEP_COORD = 10
+SPEED = 100#скорость
+STEP_DEGREE = 5
+STEP_GRIP = 15
+STEP_COORD = 15
 CAM_STEP = 3
 
 AUTO = False
@@ -41,7 +42,7 @@ class threadingJoy(threading.Thread):#класс джойстика
         self.Arm2 = None
         self.RotateArm = None
         self.rotateGripper = None
-        self.Gripper = 170
+        self.Gripper = 100
 
         self.tail = 5
 
@@ -53,7 +54,7 @@ class threadingJoy(threading.Thread):#класс джойстика
         self.p0 = 82.65
         self.p1 = 79
 
-        self.mode = True#1-по координатам 0 - по углас
+        self.mode = False#1-по координатам 0 - по углас
 
         self.sock = sock
 
@@ -93,12 +94,11 @@ class threadingJoy(threading.Thread):#класс джойстика
            
         if not self._stopping:
             self.J.connectButton('a', self.auto)
-            self.J.connectButton('b', self.changeMode)
-            self.J.connectButton('y', self.speedDown)
+            self.J.connectButton('b', self.speedDown)
             self.J.connectButton('select', self.camDown)
             self.J.connectButton('start', self.camUp)
             self.J.connectButton('mode', self.armDefault)
-            self.J.connectButton('tr', self.speedUp)
+            self.J.connectButton('y', self.speedUp)
             self.J.connectButton('x', self.readQr)
             
 
@@ -121,8 +121,10 @@ class threadingJoy(threading.Thread):#класс джойстика
             y = int(self.J.Axis.get('hat0y'))
             x = -int(self.J.Axis.get('hat0x'))
 
-            rotateGripper = self.aJ.getAxis('y')
-            tail = self.aJ.getAxis('x')
+            rotateGripper = self.aJ.getAxis('x')
+            tail = self.aJ.getAxis('y')
+            #print(tail)
+            
 
             rotateArm = int(self.J.Axis.get('x')*-100)
             openGrip = int(self.J.Axis.get('z')*100)
@@ -140,29 +142,29 @@ class threadingJoy(threading.Thread):#класс джойстика
                 self.RotateArm -= STEP_DEGREE*0.5/STEP_DEGREE
             elif(rotateArm <= -80):
                 self.RotateArm -= STEP_DEGREE/STEP_DEGREE
-            if(self.RotateArm > 135 and self._isDefaulted):
+            if(self.RotateArm > 135):
                 self.RotateArm = 135
-            elif(self.RotateArm < 45 and self._isDefaulted):
+            elif(self.RotateArm < 45):
                 self.RotateArm = 45
 
             if(openGrip > -50 and openGrip < 0):
-                self.Gripper += STEP_DEGREE*0.25
+                self.Gripper += STEP_GRIP*0.25
             elif(openGrip >= 0 and openGrip < 30):
-                self.Gripper += STEP_DEGREE*0.5
+                self.Gripper += STEP_GRIP*0.5
             elif(openGrip >= 30):
-                self.Gripper += STEP_DEGREE
+                self.Gripper += STEP_GRIP
 
             if(closeGrip > -50 and closeGrip < 0):
-                self.Gripper -= STEP_DEGREE*0.25
+                self.Gripper -= STEP_GRIP*0.25
             elif(closeGrip >= 0 and closeGrip < 30):
-                self.Gripper -= STEP_DEGREE*0.5
+                self.Gripper -= STEP_GRIP*0.5
             elif(closeGrip >= 30):
-                self.Gripper -= STEP_DEGREE
+                self.Gripper -= STEP_GRIP
 
-            if(self.Gripper > 180):
-                self.Gripper = 180
-            elif(self.Gripper < 30):
-                self.Gripper = 30
+            if(self.Gripper > 155):
+                self.Gripper = 155
+            elif(self.Gripper < 0):
+                self.Gripper = 0
             
             if(x != 0 and y != 0): # Если нажаты обе оси
                 leftSpeed = x*y*SPEED
@@ -181,6 +183,7 @@ class threadingJoy(threading.Thread):#класс джойстика
                 Arm1 = int(self.J.Axis.get('y')*100)
                 Arm2 = int(self.J.Axis.get('ry')*100)
                 
+                
                 if (Arm1 > 15 and Arm1 < 40):
                     self.Arm1 += STEP_DEGREE*0.25
                 elif(Arm1 >=40 and Arm1 < 80):
@@ -195,8 +198,8 @@ class threadingJoy(threading.Thread):#класс джойстика
                     self.Arm1 -= STEP_DEGREE
                 if(self.Arm1 > 270):
                     self.Arm1 = 270
-                elif(self.Arm1 < 50):
-                    self.Arm1 = 50
+                elif(self.Arm1 < 35):
+                    self.Arm1 = 35
 
                 if (Arm2 > 15 and Arm2 < 40):
                     self.Arm2 += STEP_DEGREE*0.25
@@ -212,8 +215,8 @@ class threadingJoy(threading.Thread):#класс джойстика
                     self.Arm2 -= STEP_DEGREE
                 if(self.Arm2 > 270):
                     self.Arm2 = 270
-                elif(self.Arm2 < 55):
-                    self.Arm2 = 55
+                elif(self.Arm2 < 45):
+                    self.Arm2 = 45
                 if(not self._goToDefault):
                     self.x, self.y = self.getCoordinates(self.Arm1, self.Arm2)
                 
@@ -263,7 +266,7 @@ class threadingJoy(threading.Thread):#класс джойстика
 
             
             self.rotateGripper = self.valmap(rotateGripper, 0, 255, 0, 270)
-            self.tail = self.valmap(tail, 0, 255, 0, 240)
+            self.tail = self.valmap(tail, 0, 255, 0, 250)
             
             data = dict()
             data.update({'leftSpeed' : leftSpeed})
@@ -397,6 +400,8 @@ class threadingJoy(threading.Thread):#класс джойстика
             self.decInverse()
         elif(str(key) == 'Key.page_down' or str(key) == str(3)):
             self.incInverse()
+        elif(str(key) == 'Key.shift_r'):
+            self.changeMode()
 
     def valmap(self,value, istart, istop, ostart, ostop):
         return ostart + (ostop - ostart) * ((value - istart) / (istop - istart))
