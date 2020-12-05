@@ -25,6 +25,7 @@ CAM_STEP = 3
 
 AUTO = False
 QR = False
+DANGERMARK = False
 SENSIVITY = 60
 INVERSE = 50
 CAMERA_AUTO_POS = 160
@@ -107,7 +108,7 @@ class threadingJoy(threading.Thread):#класс джойстика
         global SPEED
         global STEP_DEGREE, STEP_COORD
         global SENSIVITY
-        global AUTO, CAMERA_AUTO_POS, QR
+        global AUTO, CAMERA_AUTO_POS, QR, DANGERMARK
         global IP
         
         time.sleep(0.5)
@@ -275,6 +276,7 @@ class threadingJoy(threading.Thread):#класс джойстика
             data.update({'inverse' : INVERSE})
             data.update({'auto' : AUTO})
             data.update({'qr' : QR})
+            data.update({'dangermark' : DANGERMARK})
             data.update({'rotateArm' : self.RotateArm})
             data.update({'Arm1' : self.Arm1})
             data.update({'Arm2' : self.Arm2})
@@ -283,6 +285,7 @@ class threadingJoy(threading.Thread):#класс джойстика
             data.update({'tail' : self.tail})
             
             if(QR):QR=False
+            if(DANGERMARK):DANGERMARK=False
             if(AUTO):
                 data.update({'camera' : CAMERA_AUTO_POS})
             else:
@@ -327,6 +330,10 @@ class threadingJoy(threading.Thread):#класс джойстика
     def auto(self):
         global AUTO
         AUTO = not AUTO
+
+    def dangerMark(self):
+        global DANGERMARK
+        DANGERMARK = True
             
     def incSensivity(self):
         global SENSIVITY
@@ -402,6 +409,8 @@ class threadingJoy(threading.Thread):#класс джойстика
             self.incInverse()
         elif(str(key) == 'Key.shift_r'):
             self.changeMode()
+        elif(str(key) == '/' ):
+            self.dangerMark()
 
     def valmap(self,value, istart, istop, ostart, ostop):
         return ostart + (ostop - ostart) * ((value - istart) / (istop - istart))
